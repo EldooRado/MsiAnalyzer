@@ -14,6 +14,15 @@ Ole2Extractor::~Ole2Extractor()
 	if (m_fatEntries)
 		delete[] m_fatEntries;
 
+	if (m_dirEntries)
+		delete[] m_dirEntries;
+
+	if (m_miniFatEntries)
+		delete[] m_miniFatEntries;
+
+	if (m_miniStream)
+		delete[] m_miniStream;
+
 	if (m_input)
 		m_input.close();
 }
@@ -140,67 +149,60 @@ bool Ole2Extractor::parseOleHeader()
 
 bool Ole2Extractor::loadFatEntries()
 {
+	bool status = false;
 	//difat array
 	const DWORD dwordsInSection = m_sectionSize / sizeof(DWORD);
-
-	//remember delete
 	DWORD * difatEntries = new DWORD[m_oleHeader.fatSecNum];
-	if (m_oleHeader.fatSecNum <= MAX_FAT_SECTIONS_COUNT_IN_HEADER)
-	{
-		::memcpy(difatEntries, m_oleHeader.difatArray, m_oleHeader.fatSecNum * sizeof(DWORD));
-	}
-	else
-	{
-		const DWORD difatInHeaderSize = MAX_FAT_SECTIONS_COUNT_IN_HEADER * sizeof(DWORD);
-		::memcpy(difatEntries, m_oleHeader.difatArray, difatInHeaderSize);
-		DWORD difatSecId = m_oleHeader.firstDifatSecId;
-		DWORD difatsToRead = m_oleHeader.fatSecNum - MAX_FAT_SECTIONS_COUNT_IN_HEADER;
-		const DWORD maxDifatsInSections = dwordsInSection - 1;
 
-		for (DWORD i = 0; i < m_oleHeader.difatSecNum; i++)
+	do {
+		if (m_oleHeader.fatSecNum <= MAX_FAT_SECTIONS_COUNT_IN_HEADER)
 		{
-			DWORD dwordsCountToReadInThisIter = maxDifatsInSections;
-			if (difatsToRead < maxDifatsInSections)
+			::memcpy(difatEntries, m_oleHeader.difatArray, m_oleHeader.fatSecNum * sizeof(DWORD));
+		}
+		else
+		{
+			const DWORD difatInHeaderSize = MAX_FAT_SECTIONS_COUNT_IN_HEADER * sizeof(DWORD);
+			::memcpy(difatEntries, m_oleHeader.difatArray, difatInHeaderSize);
+			DWORD difatSecId = m_oleHeader.firstDifatSecId;
+			DWORD difatsToRead = m_oleHeader.fatSecNum - MAX_FAT_SECTIONS_COUNT_IN_HEADER;
+			const DWORD maxDifatsInSections = dwordsInSection - 1;
+
+			for (DWORD i = 0; i < m_oleHeader.difatSecNum; i++)
 			{
-				dwordsCountToReadInThisIter = difatsToRead;
+				DWORD dwordsCountToReadInThisIter = maxDifatsInSections;
+				if (difatsToRead < maxDifatsInSections)
+				{
+					dwordsCountToReadInThisIter = difatsToRead;
+				}
+				DWORD difatSectionOffset = (difatSecId + 1) * m_sectionSize;
+				ASSERT_BOOL(readArray(m_input, difatEntries + MAX_FAT_SECTIONS_COUNT_IN_HEADER + i * maxDifatsInSections, dwordsCountToReadInThisIter, difatSectionOffset));
+				ASSERT_BOOL(readType(m_input, difatSecId, difatSectionOffset + m_sectionSize - sizeof(DWORD)));
+				difatsToRead -= maxDifatsInSections;
 			}
-			DWORD difatSectionOffset = (difatSecId + 1) * m_sectionSize;
-			ASSERT_BOOL(readArray(m_input, difatEntries + MAX_FAT_SECTIONS_COUNT_IN_HEADER + i * maxDifatsInSections, dwordsCountToReadInThisIter, difatSectionOffset));
-			ASSERT_BOOL(readType(m_input, difatSecId, difatSectionOffset + m_sectionSize - sizeof(DWORD)));
-			difatsToRead -= maxDifatsInSections;
 		}
-	}
 
-	//fat section
-	const DWORD maxFatArraySize = m_oleHeader.fatSecNum * dwordsInSection;
-	
-	//remember delete
-	m_fatEntries = new DWORD[maxFatArraySize];
-	for (DWORD i = 0; i < m_oleHeader.fatSecNum; i++)
-	{
-		DWORD fatSectionOffset = (difatEntries[i] + 1) * m_sectionSize;
-		ASSERT_BOOL(readArray(m_input, m_fatEntries + i * dwordsInSection, dwordsInSection, fatSectionOffset))
-	}
+		//fat section
+		const DWORD maxFatArraySize = m_oleHeader.fatSecNum * dwordsInSection;
 
-	//getFatArraySize
-	for (size_t i = 0; i < maxFatArraySize; i++)
-	{
-		if (m_fatEntries[i] == FREESECT)
+		m_fatEntries = new DWORD[maxFatArraySize];
+		for (DWORD i = 0; i < m_oleHeader.fatSecNum; i++)
 		{
-			m_fatArraySize = i;
-			break;
+			DWORD fatSectionOffset = (difatEntries[i] + 1) * m_sectionSize;
+			ASSERT_BOOL(readArray(m_input, m_fatEntries + i * dwordsInSection, dwordsInSection, fatSectionOffset))
 		}
-	}
-	//end of getFatArraySize
 
-	if (m_sectionCount != m_fatArraySize)
-	{
-		Log(LogLevel::Error, "fatArraySize is incorrect: ", m_fatArraySize);
-		return false;
-	}
-	Log(LogLevel::Info, "\nGetting fat section success");
+		//end of getFatArraySize
 
-	return true;
+		Log(LogLevel::Info, "\nGetting fat section success");
+		status = true;
+	}
+	while (false);
+
+	//cleanup
+	if (difatEntries)
+		delete[] difatEntries;
+
+	return status;
 }
 
 bool Ole2Extractor::loadMiniFatEntries()
@@ -210,7 +212,7 @@ bool Ole2Extractor::loadMiniFatEntries()
 	m_miniFatArraySize = m_oleHeader.miniFatSecNum * miniFatEntriesInSection;
 	const DWORD miniFatDataSize = m_oleHeader.miniFatSecNum * m_sectionSize;
 	m_miniFatEntries = new DWORD[m_miniFatArraySize];
-	ASSERT_BOOL(readChunkOfDataFromOle2(m_input, m_miniFatEntries, m_oleHeader.firstMiniSecId, miniFatDataSize, m_sectionSize, m_fatEntries, m_fatArraySize));
+	ASSERT_BOOL(readChunkOfDataFromOle2(m_input, m_miniFatEntries, m_oleHeader.firstMiniSecId, miniFatDataSize, m_sectionSize, m_fatEntries, m_sectionCount));
 	Log(LogLevel::Info, "Getting minifat section success");
 	return true;
 }
@@ -225,7 +227,7 @@ bool Ole2Extractor::loadDirEntries()
 		//dirSecNum is not used in version 3 so we need to count this number
 		while (dirSecId != ENDOFCHAIN)
 		{
-			if (dirSecId >= m_fatArraySize)
+			if (dirSecId >= m_sectionCount)
 			{
 				Log(LogLevel::Error, "sectorIndex index out of bound: ", dirSecId);
 				return false;
@@ -240,7 +242,7 @@ bool Ole2Extractor::loadDirEntries()
 	m_dirEntriesCount = dirSecNum * dirEntriesInSection;
 	const DWORD dirDataSize = dirSecNum * m_sectionSize;
 	m_dirEntries = new DirectoryEntry[m_dirEntriesCount];
-	ASSERT_BOOL(readChunkOfDataFromOle2(m_input, m_dirEntries, m_oleHeader.firstDirSecId, dirDataSize, m_sectionSize, m_fatEntries, m_fatArraySize));
+	ASSERT_BOOL(readChunkOfDataFromOle2(m_input, m_dirEntries, m_oleHeader.firstDirSecId, dirDataSize, m_sectionSize, m_fatEntries, m_sectionCount));
 	m_rootDirEntry = m_dirEntries[0];
 	Log(LogLevel::Info, "Getting dir section success");
 	return true;
@@ -251,7 +253,7 @@ bool Ole2Extractor::loadMiniStreamEntries()
 	//mini stream
 	DWORD miniStreamSize = static_cast<DWORD>(m_rootDirEntry.streamSize);
 	m_miniStream = new BYTE[miniStreamSize];
-	ASSERT_BOOL(readChunkOfDataFromOle2(m_input, m_miniStream, m_rootDirEntry.startSecLocation, miniStreamSize, m_sectionSize, m_fatEntries, m_fatArraySize));
+	ASSERT_BOOL(readChunkOfDataFromOle2(m_input, m_miniStream, m_rootDirEntry.startSecLocation, miniStreamSize, m_sectionSize, m_fatEntries, m_sectionCount));
 	Log(LogLevel::Info, "Getting ministream section success");
 	return true;
 }
@@ -267,7 +269,7 @@ std::vector<std::string> Ole2Extractor::getStreamNames()
 	return names;
 }
 
-bool Ole2Extractor::allocateStream(DWORD index, BYTE** stream, DWORD& streamSize)
+bool Ole2Extractor::readAndAllocateStream(DWORD index, BYTE** stream, DWORD& streamSize)
 {
 	const DirectoryEntry& streamEntry = m_dirEntries[index];
 	if (streamEntry.objectType == DirEntryType::Stream)
@@ -283,7 +285,7 @@ bool Ole2Extractor::allocateStream(DWORD index, BYTE** stream, DWORD& streamSize
 		}
 		else
 		{
-			ASSERT_BOOL(readChunkOfDataFromOle2(m_input, *stream, streamSecId, streamSize, m_sectionSize, m_fatEntries, m_fatArraySize, false));
+			ASSERT_BOOL(readChunkOfDataFromOle2(m_input, *stream, streamSecId, streamSize, m_sectionSize, m_fatEntries, m_sectionCount, false));
 		}
 	}
 	else

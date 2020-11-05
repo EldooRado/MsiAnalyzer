@@ -117,6 +117,6 @@ public:
 	bool loadDirEntries();
 	bool loadMiniStreamEntries();
 	std::vector<std::string> getStreamNames();
-	bool allocateStream(DWORD index, BYTE** stream, DWORD& streamSize);
+	bool readAndAllocateStream(DWORD index, BYTE** stream, DWORD& streamSize);
 	//bool parseMiniStream();
 };

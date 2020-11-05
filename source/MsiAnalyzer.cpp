@@ -5,6 +5,7 @@
 #include "../include/LogHelper.h"
 
 bool writeToFile(std::string fileName, const char* pStream, size_t streamSize);
+bool getStringVector(Ole2Extractor& extractor, const DWORD stringDataIndex, const DWORD stringPoolIndex, std::vector<std::string>& outVecStrings);
 
 int main(int argc, char* argv[])
 {
@@ -47,29 +48,27 @@ int main(int argc, char* argv[])
 	//get a stream names
 	std::vector<std::string> vecNames = extractor.getStreamNames();
 
-	//get particular section
-	const std::string Table_Name = "!_StringData";
+	const std::string StringData_Name = "!_StringData";
+	DWORD stringDataTableIndex = -1;
+
+	const std::string StringPool_Name = "!_StringPool";
+	DWORD stringPoolTableIndex = -1;
+
 	for (DWORD i = 0; i < vecNames.size(); i++)
 	{
-		if (vecNames[i].compare(Table_Name) == 0)
+		if (vecNames[i].compare(StringData_Name) == 0)
 		{
-			BYTE* currStream = nullptr;
-			DWORD streamSize = 0;
-			ASSERT(extractor.allocateStream(i, &currStream, streamSize));
-
-			if (currStream)
-			{
-				writeToFile(Table_Name, (const char*)currStream, streamSize);
-				delete[] currStream;
-				std::string msg = Table_Name + " written to file";
-				Log(LogLevel::Info, msg.data());
-			}
-			else
-			{
-				Log(LogLevel::Warning, "Failed to save file");
-			}
+			stringDataTableIndex = i;
+		}
+		else if (vecNames[i].compare(StringPool_Name) == 0)
+		{
+			stringPoolTableIndex = i;
 		}
 	}
+
+	//string vector
+	std::vector<std::string> vecMsiStrings;
+	ASSERT(getStringVector(extractor, stringDataTableIndex, stringPoolTableIndex, vecMsiStrings));
 
 	return 0;
 }
@@ -105,4 +104,94 @@ bool writeToFile(std::string fileName, const char* pStream, size_t streamSize)
 	outputFile.close();
 
 	return true;
+}
+
+bool getStringVector(Ole2Extractor& extractor, const DWORD stringDataIndex, const DWORD stringPoolIndex, std::vector<std::string>& outVecStrings)
+{
+	bool status = false;
+
+	BYTE* stringDataStream = nullptr;
+	BYTE* stringPoolByteStream = nullptr;
+
+	do {
+		//get StringData
+		DWORD stringDataStreamSize = 0;
+		ASSERT_BREAK(extractor.readAndAllocateStream(stringDataIndex, &stringDataStream, stringDataStreamSize));
+
+		if (stringDataStream)
+		{
+			//if you want save stream, uncomment lines
+			const std::string StringData_Name = "!_StringData";
+			writeToFile(StringData_Name, (const char*)stringDataStream, stringDataStreamSize);
+			std::string msg = StringData_Name + " written to file";
+			Log(LogLevel::Info, msg.data());
+		}
+		Log(LogLevel::Info, "Success of reading !_StringData table");
+
+		//get StringPool
+		DWORD stringPoolByteStreamSize = 0;
+		ASSERT_BREAK(extractor.readAndAllocateStream(stringPoolIndex, &stringPoolByteStream, stringPoolByteStreamSize));
+
+		const DWORD stringFieldsCount = stringPoolByteStreamSize / sizeof(DWORD);
+
+		//if longStrings occur then we allocate to much size, but it should't be a problem
+		outVecStrings.resize(stringFieldsCount);
+
+		WORD* stringPoolStream = (WORD*)stringPoolByteStream;
+
+		DWORD offset = 0;
+		DWORD stringIndex = 0;
+		for (DWORD i = 0; i < stringFieldsCount; i++)
+		{
+			WORD occuranceNumber = stringPoolStream[2 * i + 1];
+			WORD stringLenght = stringPoolStream[2 * i];
+
+			if (occuranceNumber > 0)
+			{
+				if (stringLenght == 0)
+				{
+					//there is long string
+					i++;
+					DWORD longStringLenght = *(((DWORD*)stringPoolStream) + i);
+					outVecStrings[stringIndex].resize(longStringLenght);
+					::memcpy((void*)outVecStrings[stringIndex].data(), stringDataStream + offset, longStringLenght);
+					offset += longStringLenght;
+
+				}
+				else if (stringLenght > 0)
+				{
+					outVecStrings[stringIndex].resize(stringLenght);
+					::memcpy((void*)outVecStrings[stringIndex].data(), stringDataStream + offset, stringLenght);
+					offset += stringLenght;
+				}
+				else
+				{
+					//something wrong
+				}
+				stringIndex++;
+			}
+		}
+
+		if (stringPoolByteStream)
+		{
+			//if you want save stream, uncomment lines
+			const std::string StringPool_Name = "!_StringPool";
+			writeToFile(StringPool_Name, (const char*)stringPoolByteStream, stringPoolByteStreamSize);
+			std::string msg = StringPool_Name + " written to file";
+			Log(LogLevel::Info, msg.data());
+		}
+		Log(LogLevel::Info, "Success of reading !_StringPool table");
+
+		status = true;
+	}
+	while (false);
+
+	//all deletes and clean up
+	if (stringDataStream)
+		delete[] stringDataStream;
+
+	if (stringPoolByteStream)
+		delete[] stringPoolByteStream;
+
+	return status;
 }
