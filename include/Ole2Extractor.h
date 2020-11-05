@@ -1,5 +1,5 @@
 #pragma once
-#include <vector>
+#include <map>
 
 #include "common.h"
 
@@ -97,6 +97,7 @@ private:
 	DWORD m_miniFatArraySize = 0;
 	DWORD* m_fatEntries = nullptr;
 	DirectoryEntry m_rootDirEntry;
+	std::map<std::string, DWORD> m_tableNames;
 
 public:
 	DWORD m_dirEntriesCount = 0;
@@ -116,7 +117,7 @@ public:
 	bool loadMiniFatEntries();
 	bool loadDirEntries();
 	bool loadMiniStreamEntries();
-	std::vector<std::string> getStreamNames();
-	bool readAndAllocateStream(DWORD index, BYTE** stream, DWORD& streamSize);
+	void initTableNames();
+	bool readAndAllocateTable(std::string tableName, BYTE** stream, DWORD& streamSize);
 	//bool parseMiniStream();
 };

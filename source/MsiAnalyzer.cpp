@@ -5,12 +5,13 @@
 #include "../include/LogHelper.h"
 
 bool writeToFile(std::string fileName, const char* pStream, size_t streamSize);
-bool getStringVector(Ole2Extractor& extractor, const DWORD stringDataIndex, const DWORD stringPoolIndex, std::vector<std::string>& outVecStrings);
+bool getStringVector(Ole2Extractor& extractor, std::string stringData_TableName, std::string stringPool_TableName, std::vector<std::string>& outVecStrings);
+bool printTablesFromMetadata(Ole2Extractor& extractor, std::string tableIndex, const std::vector<std::string>& vecStrings);
 
 int main(int argc, char* argv[])
 {
 	std::string szMsiName;
-	if (argc == 2)
+	/*if (argc == 2)
 	{
 		szMsiName = std::string(argv[1]);
 
@@ -24,8 +25,8 @@ int main(int argc, char* argv[])
 	{
 		std::cout << "MsiAnalyzer.exe <msi_file>" << std::endl;
 		return -2;
-	}
-
+	}*/
+	szMsiName = "C:\\work\\msi\\tools\\javascript.msi";
 	Ole2Extractor extractor;
 	ASSERT(extractor.initialize(szMsiName));
 	Log(LogLevel::Info, "Success of initialize extractor");
@@ -46,30 +47,20 @@ int main(int argc, char* argv[])
 	Log(LogLevel::Info, "Success of loading miniStreamEntries");
 
 	//get a stream names
-	std::vector<std::string> vecNames = extractor.getStreamNames();
+	extractor.initTableNames();
 
-	const std::string StringData_Name = "!_StringData";
-	DWORD stringDataTableIndex = -1;
-
-	const std::string StringPool_Name = "!_StringPool";
-	DWORD stringPoolTableIndex = -1;
-
-	for (DWORD i = 0; i < vecNames.size(); i++)
-	{
-		if (vecNames[i].compare(StringData_Name) == 0)
-		{
-			stringDataTableIndex = i;
-		}
-		else if (vecNames[i].compare(StringPool_Name) == 0)
-		{
-			stringPoolTableIndex = i;
-		}
-	}
+	const std::string StringData_TableName = "!_StringData";
+	const std::string StringPool_TableName = "!_StringPool";
+	const std::string Tables_TableName = "!_Tables";
 
 	//string vector
 	std::vector<std::string> vecMsiStrings;
-	ASSERT(getStringVector(extractor, stringDataTableIndex, stringPoolTableIndex, vecMsiStrings));
+	ASSERT(getStringVector(extractor, StringData_TableName, StringPool_TableName, vecMsiStrings));
 
+	//print "!_Tables" table
+	ASSERT(printTablesFromMetadata(extractor, Tables_TableName, vecMsiStrings));
+
+	Log(LogLevel::Info, "\n----------SUCCESS----------");
 	return 0;
 }
 bool writeToFile(std::string fileName, const char* pStream, size_t streamSize)
@@ -106,7 +97,7 @@ bool writeToFile(std::string fileName, const char* pStream, size_t streamSize)
 	return true;
 }
 
-bool getStringVector(Ole2Extractor& extractor, const DWORD stringDataIndex, const DWORD stringPoolIndex, std::vector<std::string>& outVecStrings)
+bool getStringVector(Ole2Extractor& extractor, std::string stringData_TableName, std::string stringPool_TableName, std::vector<std::string>& outVecStrings)
 {
 	bool status = false;
 
@@ -116,21 +107,20 @@ bool getStringVector(Ole2Extractor& extractor, const DWORD stringDataIndex, cons
 	do {
 		//get StringData
 		DWORD stringDataStreamSize = 0;
-		ASSERT_BREAK(extractor.readAndAllocateStream(stringDataIndex, &stringDataStream, stringDataStreamSize));
+		ASSERT_BREAK(extractor.readAndAllocateTable(stringData_TableName, &stringDataStream, stringDataStreamSize));
 
 		if (stringDataStream)
 		{
 			//if you want save stream, uncomment lines
-			const std::string StringData_Name = "!_StringData";
-			writeToFile(StringData_Name, (const char*)stringDataStream, stringDataStreamSize);
-			std::string msg = StringData_Name + " written to file";
+			writeToFile(stringData_TableName, (const char*)stringDataStream, stringDataStreamSize);
+			std::string msg = stringData_TableName + " written to file";
 			Log(LogLevel::Info, msg.data());
 		}
 		Log(LogLevel::Info, "Success of reading !_StringData table");
 
 		//get StringPool
 		DWORD stringPoolByteStreamSize = 0;
-		ASSERT_BREAK(extractor.readAndAllocateStream(stringPoolIndex, &stringPoolByteStream, stringPoolByteStreamSize));
+		ASSERT_BREAK(extractor.readAndAllocateTable(stringPool_TableName, &stringPoolByteStream, stringPoolByteStreamSize));
 
 		const DWORD stringFieldsCount = stringPoolByteStreamSize / sizeof(DWORD);
 
@@ -168,16 +158,15 @@ bool getStringVector(Ole2Extractor& extractor, const DWORD stringDataIndex, cons
 				{
 					//something wrong
 				}
-				stringIndex++;
 			}
+			stringIndex++;
 		}
 
 		if (stringPoolByteStream)
 		{
 			//if you want save stream, uncomment lines
-			const std::string StringPool_Name = "!_StringPool";
-			writeToFile(StringPool_Name, (const char*)stringPoolByteStream, stringPoolByteStreamSize);
-			std::string msg = StringPool_Name + " written to file";
+			writeToFile(stringPool_TableName, (const char*)stringPoolByteStream, stringPoolByteStreamSize);
+			std::string msg = stringPool_TableName + " written to file";
 			Log(LogLevel::Info, msg.data());
 		}
 		Log(LogLevel::Info, "Success of reading !_StringPool table");
@@ -192,6 +181,40 @@ bool getStringVector(Ole2Extractor& extractor, const DWORD stringDataIndex, cons
 
 	if (stringPoolByteStream)
 		delete[] stringPoolByteStream;
+
+	return status;
+}
+
+bool printTablesFromMetadata(Ole2Extractor& extractor, std::string tables_TableName, const std::vector<std::string>& vecStrings)
+{
+	bool status = false;
+	BYTE* tablesByteStream = nullptr;
+
+	do {
+		//get StringData
+		DWORD tablesByteStreamSize = 0;
+		ASSERT_BREAK(extractor.readAndAllocateTable(tables_TableName, &tablesByteStream, tablesByteStreamSize));
+
+		WORD* tablesStream = (WORD*)tablesByteStream;
+		std::cout << "Tables:\n";
+		for (DWORD i = 0; i < tablesByteStreamSize / sizeof(WORD); i++)
+		{
+			WORD stringIndex = tablesStream[i];
+			std::cout << vecStrings[stringIndex] << std::endl;;
+		}
+		std::cout << std::endl;
+
+		if (tablesByteStream)
+		{
+			//if you want save stream, uncomment lines
+			writeToFile(tables_TableName, (const char*)tablesByteStream, tablesByteStreamSize);
+			std::string msg = tables_TableName + " written to file";
+			Log(LogLevel::Info, msg.data());
+		}
+		Log(LogLevel::Info, "Success of reading !_Tables table");
+
+		status = true;
+	} while (false);
 
 	return status;
 }
