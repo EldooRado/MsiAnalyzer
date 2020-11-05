@@ -1,8 +1,8 @@
 #include <fstream>
 
-#include "../include/Ole2Extractor.h"
-#include "../include/readHelpers.h"
-#include "../include/LogHelper.h"
+#include "Ole2Extractor.h"
+#include "readHelper.h"
+#include "LogHelper.h"
 
 Ole2Extractor::Ole2Extractor()
 {

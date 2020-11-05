@@ -1,7 +1,7 @@
 #include <iostream>
 #include <string>
 
-#include "../include/LogHelper.h"
+#include "LogHelper.h"
 
 void Log(LogLevel lvl, const char* msg)
 {

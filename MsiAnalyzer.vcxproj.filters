@@ -15,13 +15,16 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="source\MsiAnalyzer.cpp">
-      <Filter>source</Filter>
-    </ClCompile>
     <ClCompile Include="source\Ole2Extractor.cpp">
       <Filter>source</Filter>
     </ClCompile>
     <ClCompile Include="source\LogHelper.cpp">
+      <Filter>source</Filter>
+    </ClCompile>
+    <ClCompile Include="source\main.cpp">
+      <Filter>source</Filter>
+    </ClCompile>
+    <ClCompile Include="source\MsiTableParser.cpp">
       <Filter>source</Filter>
     </ClCompile>
   </ItemGroup>
@@ -29,13 +32,16 @@
     <ClInclude Include="include\common.h">
       <Filter>include</Filter>
     </ClInclude>
-    <ClInclude Include="include\readHelpers.h">
-      <Filter>include</Filter>
-    </ClInclude>
     <ClInclude Include="include\Ole2Extractor.h">
       <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="include\LogHelper.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\MsiTableParser.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\readHelper.h">
       <Filter>include</Filter>
     </ClInclude>
   </ItemGroup>
