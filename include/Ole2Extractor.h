@@ -98,11 +98,10 @@ private:
 	DWORD m_miniFatArraySize = 0;
 	DWORD* m_fatEntries = nullptr;
 	DirectoryEntry m_rootDirEntry;
-	std::map<std::string, DWORD> m_tableNames;
+	std::map<std::string, DWORD> m_mapSectionNameToSectionId;
 
 public:
 	DWORD m_dirEntriesCount = 0;
-
 	BYTE* m_miniStream = nullptr;
 	DWORD* m_miniFatEntries = nullptr;
 	DirectoryEntry* m_dirEntries = nullptr;
@@ -120,5 +119,4 @@ public:
 	bool loadMiniStreamEntries();
 	void initTableNames();
 	bool readAndAllocateTable(std::string tableName, BYTE** stream, DWORD& streamSize);
-	//bool parseMiniStream();
 };

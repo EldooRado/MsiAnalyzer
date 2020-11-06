@@ -263,19 +263,19 @@ void Ole2Extractor::initTableNames()
 	for (DWORD i = 0; i < m_dirEntriesCount; i++)
 	{
 		const DirectoryEntry& streamEntry = m_dirEntries[i];
-		m_tableNames[convertTableNameToString(streamEntry.dirEntryName, streamEntry.dirEntryNameLength)] = i;
+		m_mapSectionNameToSectionId[convertTableNameToString(streamEntry.dirEntryName, streamEntry.dirEntryNameLength)] = i;
 	}
 }
 
 bool Ole2Extractor::readAndAllocateTable(std::string tableName, BYTE** stream, DWORD& streamSize)
 {
-	if (m_tableNames.count(tableName) <= 0)
+	if (m_mapSectionNameToSectionId.count(tableName) <= 0)
 	{
 		Log(LogLevel::Error, "The table doesn't belong to msi ");
 		return false;
 	}
 
-	const DirectoryEntry& streamEntry = m_dirEntries[m_tableNames[tableName]];
+	const DirectoryEntry& streamEntry = m_dirEntries[m_mapSectionNameToSectionId[tableName]];
 	if (streamEntry.objectType == DirEntryType::Stream)
 	{
 		DWORD streamSecId = streamEntry.startSecLocation;
@@ -294,7 +294,7 @@ bool Ole2Extractor::readAndAllocateTable(std::string tableName, BYTE** stream, D
 	}
 	else
 	{
-		Log(LogLevel::Warning, "The directory is storage, not a stream. Dir id: ", m_tableNames[tableName]);
+		Log(LogLevel::Warning, "The directory is storage, not a stream. Dir id: ", m_mapSectionNameToSectionId[tableName]);
 	}
 	return true;
 }

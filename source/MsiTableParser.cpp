@@ -8,6 +8,12 @@ MsiTableParser::MsiTableParser(Ole2Extractor& extractor) : m_oleExtractor(extrac
 
 }
 
+MsiTableParser::~MsiTableParser()
+{
+	if (m_columnsByteStream)
+		delete[] m_columnsByteStream;
+}
+
 bool MsiTableParser::initStringVector()
 {
 	bool status = false;
@@ -18,20 +24,20 @@ bool MsiTableParser::initStringVector()
 	do {
 		//get StringData
 		DWORD stringDataStreamSize = 0;
-		ASSERT_BREAK(m_oleExtractor.readAndAllocateTable(StringData_Table_Name, &stringDataStream, stringDataStreamSize));
+		ASSERT_BREAK(m_oleExtractor.readAndAllocateTable(StringData_Stream_Name, &stringDataStream, stringDataStreamSize));
 
 		if (stringDataStream)
 		{
 			//if you want save stream, uncomment lines
-			writeToFile(StringData_Table_Name, (const char*)stringDataStream, stringDataStreamSize);
-			std::string msg = std::string(StringData_Table_Name) + " written to file";
+			writeToFile(StringData_Stream_Name, (const char*)stringDataStream, stringDataStreamSize);
+			std::string msg = std::string(StringData_Stream_Name) + " written to file";
 			Log(LogLevel::Info, msg.data());
 		}
 		Log(LogLevel::Info, "Success of reading !_StringData table");
 
 		//get StringPool
 		DWORD stringPoolByteStreamSize = 0;
-		ASSERT_BREAK(m_oleExtractor.readAndAllocateTable(StringPool_Table_Name, &stringPoolByteStream, stringPoolByteStreamSize));
+		ASSERT_BREAK(m_oleExtractor.readAndAllocateTable(StringPool_Stream_Name, &stringPoolByteStream, stringPoolByteStreamSize));
 
 		const DWORD stringFieldsCount = stringPoolByteStreamSize / sizeof(DWORD);
 
@@ -76,8 +82,8 @@ bool MsiTableParser::initStringVector()
 		if (stringPoolByteStream)
 		{
 			//if you want save stream, uncomment lines
-			writeToFile(StringPool_Table_Name, (const char*)stringPoolByteStream, stringPoolByteStreamSize);
-			std::string msg = std::string(StringPool_Table_Name) + " written to file";
+			writeToFile(StringPool_Stream_Name, (const char*)stringPoolByteStream, stringPoolByteStreamSize);
+			std::string msg = std::string(StringPool_Stream_Name) + " written to file";
 			Log(LogLevel::Info, msg.data());
 		}
 		Log(LogLevel::Info, "Success of reading !_StringPool table");
@@ -103,7 +109,7 @@ bool MsiTableParser::printTablesFromMetadata()
 	do {
 		//get StringData
 		DWORD tablesByteStreamSize = 0;
-		ASSERT_BREAK(m_oleExtractor.readAndAllocateTable(Tables_Table_Name, &tablesByteStream, tablesByteStreamSize));
+		ASSERT_BREAK(m_oleExtractor.readAndAllocateTable(Tables_Stream_Name, &tablesByteStream, tablesByteStreamSize));
 
 		WORD* tablesStream = (WORD*)tablesByteStream;
 		std::cout << "Tables:\n";
@@ -111,7 +117,7 @@ bool MsiTableParser::printTablesFromMetadata()
 		{
 			WORD stringIndex = tablesStream[i];
 			m_tableNameIndices.push_back(stringIndex);
-
+			m_mapTNStringToTNIndex[m_vecStrings[stringIndex]] = stringIndex;
 			std::cout << m_vecStrings[stringIndex] << std::endl;;
 		}
 		std::cout << std::endl;
@@ -119,8 +125,8 @@ bool MsiTableParser::printTablesFromMetadata()
 		if (tablesByteStream)
 		{
 			//if you want save stream, uncomment lines
-			writeToFile(Tables_Table_Name, (const char*)tablesByteStream, tablesByteStreamSize);
-			std::string msg = std::string(Tables_Table_Name) + " written to file";
+			writeToFile(Tables_Stream_Name, (const char*)tablesByteStream, tablesByteStreamSize);
+			std::string msg = std::string(Tables_Stream_Name) + " written to file";
 			Log(LogLevel::Info, msg.data());
 		}
 		Log(LogLevel::Info, "Success of reading !_Tables table");
@@ -131,26 +137,25 @@ bool MsiTableParser::printTablesFromMetadata()
 	return status;
 }
 
-bool MsiTableParser::printColumnsFromMetadata()
+bool MsiTableParser::extractColumnsFromMetadata()
 {
 	bool status = false;
-	BYTE* columnsByteStream = nullptr;
 
 	do {
 		//get StringData
 		DWORD columnsByteStreamSize = 0;
-		ASSERT_BREAK(m_oleExtractor.readAndAllocateTable(Columns_Table_Name, &columnsByteStream, columnsByteStreamSize));
+		ASSERT_BREAK(m_oleExtractor.readAndAllocateTable(Columns_Stream_Name, &m_columnsByteStream, columnsByteStreamSize));
 
-		WORD* columnsStream = (WORD*)columnsByteStream;
+		WORD* columnsStream = (WORD*)m_columnsByteStream;
 
 		//note difference between tableIndex and tableNameIndex
 		DWORD tableIndex = 0;
 		DWORD columnCount = 0;
-		DWORD currTableNameIndex = m_tableNameIndices[0];
 
+		DWORD currTableNameIndex = m_tableNameIndices[0];
+		m_tableNameIndexToColumnCountAndOffset[currTableNameIndex].second = m_allColumnsCount;
 		//we need to know, where is ending of table names
-		DWORD i;
-		for (i = 0; i < columnsByteStreamSize / sizeof(WORD); i++)
+		for (DWORD i = 0; i < columnsByteStreamSize / sizeof(WORD); i++)
 		{
 			WORD stringIndex = columnsStream[i];
 			if (stringIndex == currTableNameIndex)
@@ -159,7 +164,9 @@ bool MsiTableParser::printColumnsFromMetadata()
 			}
 			else
 			{
-				m_columnCount[currTableNameIndex] = columnCount;
+				m_allColumnsCount += columnCount;
+				m_tableNameIndexToColumnCountAndOffset[currTableNameIndex].first = columnCount;
+
 				tableIndex++;
 				if (tableIndex >= m_tableNameIndices.size())
 				{
@@ -172,22 +179,77 @@ bool MsiTableParser::printColumnsFromMetadata()
 				{
 					//something wrong
 				}
+				m_tableNameIndexToColumnCountAndOffset[currTableNameIndex].second = m_allColumnsCount;
+
 				columnCount = 1;
 			}
 		}
-		std::cout << std::endl;
 
-		if (columnsByteStream)
+		//check if stream is correct size
+		constexpr DWORD metadataColumnCount = 4;
+		if (m_allColumnsCount * sizeof(WORD) * metadataColumnCount != columnsByteStreamSize)
+		{
+			//something wrong
+		}
+
+		if (m_columnsByteStream)
 		{
 			//if you want save stream, uncomment lines
-			writeToFile(Columns_Table_Name, (const char*)columnsByteStream, columnsByteStreamSize);
-			std::string msg = std::string(Columns_Table_Name) + " written to file";
+			writeToFile(Columns_Stream_Name, (const char*)m_columnsByteStream, columnsByteStreamSize);
+			std::string msg = std::string(Columns_Stream_Name) + " written to file";
 			Log(LogLevel::Info, msg.data());
 		}
 		Log(LogLevel::Info, "Success of reading !_Tables table\n");
 
 		status = true;
 	} while (false);
+
+	return status;
+}
+
+bool MsiTableParser::printCustomActionTable()
+{
+	bool status = false;
+
+	do {
+		//take info only about !_CustomAction table
+		//cA -> shortcut from customAction
+		DWORD cATableNameIndex = 0;
+		ASSERT_BREAK(getTableNameIndex(CustomAction_Table_Name, cATableNameIndex));
+
+
+		const DWORD cAColumnCount = m_tableNameIndexToColumnCountAndOffset[cATableNameIndex].first;
+		const DWORD cAColumnOffset = m_tableNameIndexToColumnCountAndOffset[cATableNameIndex].second;
+
+		std::vector<ColumnInfo> cAColumns(cAColumnCount);
+		const DWORD Index_ColumnIndex = 1;
+		const DWORD Name_ColumnIndex = 2;
+		const DWORD Type_ColumnIndex = 3;
+
+		DWORD indicesOffset = Index_ColumnIndex * m_allColumnsCount + cAColumnOffset;
+		DWORD namesOffset = Name_ColumnIndex * m_allColumnsCount + cAColumnOffset;
+		DWORD typesOffset = Type_ColumnIndex * m_allColumnsCount + cAColumnOffset;
+
+		bool breakAfterLoop = false;
+
+		WORD* columnsStream = (WORD*)m_columnsByteStream;
+		for (DWORD j = 0; j < cAColumnCount; j++)
+		{
+			//indices. Indices have always highest bit set to 1, I don't know why. Ignore it
+			cAColumns[j].index = columnsStream[indicesOffset + j] & 0x7fff;
+
+			//names
+			WORD nameId = columnsStream[namesOffset + j];
+			ASSERT_BREAK(nameId < m_vecStrings.size());
+			cAColumns[j].name = m_vecStrings[nameId];
+
+			//types
+			getColumnType(columnsStream[typesOffset + j], cAColumns[j].type);
+		}
+
+		if (breakAfterLoop) break;
+	} 
+	while (false);
 
 	return status;
 }
@@ -225,4 +287,48 @@ bool MsiTableParser::writeToFile(std::string fileName, const char* pStream, size
 	outputFile.close();
 
 	return true;
+}
+
+bool MsiTableParser::getTableNameIndex(std::string tableName, DWORD& index)
+{
+	if (m_mapTNStringToTNIndex.count(tableName) <= 0)
+	{
+		std::string msg = tableName + " doesn't exists";
+		Log(LogLevel::Warning, msg.data());
+		return false;
+	}
+
+	index = m_mapTNStringToTNIndex[tableName];
+
+	return true;
+}
+
+void MsiTableParser::getColumnType(WORD columnWordType, ColumnTypeInfo& columnTypeInfo)
+{
+	//1. if ( BITTEST(&type, 12) ) -> then field is nullable (can be null
+	//2. there are other types: 'o', 'v', 'f', 'g', 'j' but for as it isn't important
+	if (BITTEST(columnWordType, 11u))
+	{
+		if (BITTEST(columnWordType, 10u))
+		{
+			if (BITTEST(columnWordType, 8u))
+				columnTypeInfo.kind = (columnWordType & 0x200) != 0 ? ColumnKind::LocString : ColumnKind::OrdString;
+			else
+				columnTypeInfo.kind = ColumnKind::Unknown;
+			columnTypeInfo.value = (unsigned __int8)columnWordType;// &0xff; //take only one byte
+		}
+		else if (BITTEST(columnWordType, 8u))
+		{
+			columnTypeInfo.kind = ColumnKind::Unknown;
+		}
+		else
+		{
+			columnTypeInfo.kind = ColumnKind::Unknown;
+		}
+	}
+	else //there is an integer
+	{
+		columnTypeInfo.kind = ColumnKind::Number;
+		columnTypeInfo.value = (columnWordType & 0x400) != 0 ? 2 : 4;
+	}
 }

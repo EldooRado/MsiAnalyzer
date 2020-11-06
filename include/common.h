@@ -14,5 +14,6 @@ typedef wchar_t WCHAR;
 #define ASSERT(x)			if(x == false) return -1;
 #define ASSERT_BOOL(x)		if(x == false) return false;
 #define ASSERT_BREAK(x)		if(x == false) break;
-#define LOBYTE(w)           ((BYTE)(((DWORD)(w)) & 0xff))
-#define HIBYTE(w)           ((BYTE)((((DWORD)(w)) >> 8) & 0xff))
+#define LOBYTE(w)			((BYTE)(((DWORD)(w)) & 0xff))
+#define HIBYTE(w)			((BYTE)((((DWORD)(w)) >> 8) & 0xff))
+#define BITTEST(var,pos)	((var) & (1<<(pos)))

@@ -54,8 +54,11 @@ int main(int argc, char* argv[])
 	//print "!_Tables" table
 	ASSERT(parser.printTablesFromMetadata());
 
-	//print "!_Columns" table
-	ASSERT(parser.printColumnsFromMetadata());
+	//analyze "!_Columns" table
+	ASSERT(parser.extractColumnsFromMetadata());
+
+	//print "!CustomAction" table
+	ASSERT(parser.printCustomActionTable());
 
 	Log(LogLevel::Info, "\n----------SUCCESS----------");
 	return 0;
