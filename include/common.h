@@ -17,3 +17,7 @@ typedef wchar_t WCHAR;
 #define LOBYTE(w)			((BYTE)(((DWORD)(w)) & 0xff))
 #define HIBYTE(w)			((BYTE)((((DWORD)(w)) >> 8) & 0xff))
 #define BITTEST(var,pos)	((var) & (1<<(pos)))
+
+//special break. Allow to break from loop
+#define ASSERT_BREAK_AFTER_LOOP_1(x, y)		if(x == false) {y = true; break;}
+#define ASSERT_BREAK_AFTER_LOOP_2(y)		if (y) break;

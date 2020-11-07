@@ -44,5 +44,8 @@
     <ClInclude Include="include\readHelper.h">
       <Filter>include</Filter>
     </ClInclude>
+    <ClInclude Include="include\customActionConstants.h">
+      <Filter>include</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

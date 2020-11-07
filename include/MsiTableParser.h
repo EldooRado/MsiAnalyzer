@@ -43,6 +43,7 @@ private:
 	std::vector<std::string> m_vecStrings;
 	std::vector<DWORD> m_tableNameIndices;
 	
+	DWORD m_stringCount = 0;
 	BYTE* m_columnsByteStream = nullptr;
 	DWORD m_allColumnsCount = 0;
 	

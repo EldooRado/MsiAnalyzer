@@ -1,6 +1,7 @@
 #include <vector>
 
 #include "MsiTableParser.h"
+#include "customActionConstants.h"
 #include "LogHelper.h"
 
 MsiTableParser::MsiTableParser(Ole2Extractor& extractor) : m_oleExtractor(extractor)
@@ -39,16 +40,16 @@ bool MsiTableParser::initStringVector()
 		DWORD stringPoolByteStreamSize = 0;
 		ASSERT_BREAK(m_oleExtractor.readAndAllocateTable(StringPool_Stream_Name, &stringPoolByteStream, stringPoolByteStreamSize));
 
-		const DWORD stringFieldsCount = stringPoolByteStreamSize / sizeof(DWORD);
+		m_stringCount = stringPoolByteStreamSize / sizeof(DWORD);
 
 		//if longStrings occur then we allocate to much size, but it should't be a problem
-		m_vecStrings.resize(stringFieldsCount);
+		m_vecStrings.resize(m_stringCount);
 
 		WORD* stringPoolStream = (WORD*)stringPoolByteStream;
 
 		DWORD offset = 0;
 		DWORD stringIndex = 0;
-		for (DWORD i = 0; i < stringFieldsCount; i++)
+		for (DWORD i = 0; i < m_stringCount; i++)
 		{
 			WORD occuranceNumber = stringPoolStream[2 * i + 1];
 			WORD stringLenght = stringPoolStream[2 * i];
@@ -118,7 +119,7 @@ bool MsiTableParser::printTablesFromMetadata()
 			WORD stringIndex = tablesStream[i];
 			m_tableNameIndices.push_back(stringIndex);
 			m_mapTNStringToTNIndex[m_vecStrings[stringIndex]] = stringIndex;
-			std::cout << m_vecStrings[stringIndex] << std::endl;;
+			std::cout << m_vecStrings[stringIndex] << std::endl;
 		}
 		std::cout << std::endl;
 
@@ -129,7 +130,7 @@ bool MsiTableParser::printTablesFromMetadata()
 			std::string msg = std::string(Tables_Stream_Name) + " written to file";
 			Log(LogLevel::Info, msg.data());
 		}
-		Log(LogLevel::Info, "Success of reading !_Tables table");
+		Log(LogLevel::Info, "Success of reading !_Tables table\n");
 
 		status = true;
 	} while (false);
@@ -199,7 +200,7 @@ bool MsiTableParser::extractColumnsFromMetadata()
 			std::string msg = std::string(Columns_Stream_Name) + " written to file";
 			Log(LogLevel::Info, msg.data());
 		}
-		Log(LogLevel::Info, "Success of reading !_Tables table\n");
+		Log(LogLevel::Info, "Success of reading !_Columns table\n");
 
 		status = true;
 	} while (false);
@@ -210,7 +211,9 @@ bool MsiTableParser::extractColumnsFromMetadata()
 bool MsiTableParser::printCustomActionTable()
 {
 	bool status = false;
+	bool breakAfterLoop = false;
 
+	BYTE* customActionByteStream = nullptr;
 	do {
 		//take info only about !_CustomAction table
 		//cA -> shortcut from customAction
@@ -230,9 +233,10 @@ bool MsiTableParser::printCustomActionTable()
 		DWORD namesOffset = Name_ColumnIndex * m_allColumnsCount + cAColumnOffset;
 		DWORD typesOffset = Type_ColumnIndex * m_allColumnsCount + cAColumnOffset;
 
-		bool breakAfterLoop = false;
+		
 
 		WORD* columnsStream = (WORD*)m_columnsByteStream;
+		DWORD oneRowByteSize = 0;
 		for (DWORD j = 0; j < cAColumnCount; j++)
 		{
 			//indices. Indices have always highest bit set to 1, I don't know why. Ignore it
@@ -240,16 +244,178 @@ bool MsiTableParser::printCustomActionTable()
 
 			//names
 			WORD nameId = columnsStream[namesOffset + j];
-			ASSERT_BREAK(nameId < m_vecStrings.size());
+			ASSERT_BREAK_AFTER_LOOP_1(nameId < m_vecStrings.size(), breakAfterLoop);
 			cAColumns[j].name = m_vecStrings[nameId];
 
 			//types
 			getColumnType(columnsStream[typesOffset + j], cAColumns[j].type);
+
+			if (cAColumns[j].type.kind == ColumnKind::Number && cAColumns[j].type.value == 4)
+			{
+				oneRowByteSize += 4;
+			}
+			else
+			{
+				oneRowByteSize += 2;
+			}
 		}
 
-		if (breakAfterLoop) break;
+		ASSERT_BREAK_AFTER_LOOP_2(breakAfterLoop);
+
+		DWORD customActionByteStreamSize = 0;
+		ASSERT_BREAK(m_oleExtractor.readAndAllocateTable(CustomAction_Stream_Name, &customActionByteStream, customActionByteStreamSize));
+
+		const DWORD rowCount = customActionByteStreamSize / oneRowByteSize;
+		if (customActionByteStreamSize % oneRowByteSize)
+		{
+			Log(LogLevel::Warning, "Something wrong: customActionByteStreamSize % oneRowByteSize = ", 
+				customActionByteStreamSize % oneRowByteSize);
+			break;
+		}
+
+		std::vector<std::vector<DWORD>> customActionTable(rowCount);
+		for (auto& vec : customActionTable)
+		{
+			vec.resize(cAColumns.size());
+		}
+
+		BYTE* customActionStream = customActionByteStream;
+		
+		//load table to vector
+		for (DWORD i = 0; i < cAColumns.size(); i++)
+		{
+			DWORD fieldSize = sizeof(WORD);
+			if (cAColumns[i].type.kind == ColumnKind::Number && cAColumns[i].type.value == 4)
+			{
+				fieldSize = sizeof(DWORD);
+			}
+
+			for (DWORD j = 0; j < rowCount; j++)
+			{
+				::memcpy(&customActionTable[j][i], customActionStream, fieldSize);
+				customActionStream += fieldSize;
+			}
+		}
+
+
+		for (auto vec : customActionTable)
+		{
+			for (DWORD i = 0; i < vec.size(); i++)
+			{
+				const ColumnTypeInfo& t = cAColumns[i].type;
+				if (t.kind == ColumnKind::LocString || t.kind == ColumnKind::OrdString)
+				{
+					if (vec[i] >= m_vecStrings.size())
+					{
+						//error
+					}
+					const std::string& s = m_vecStrings[vec[i]];
+					if (s.size() > t.value)
+					{
+						std::cout << s.substr(t.value) << "\t";
+					}
+					else
+					{
+						std::cout << s << "\t";
+					}
+					
+				}
+				else if (t.kind == ColumnKind::Number)
+				{
+					std::cout << vec[i] << "\t";
+				}
+				else
+				{
+					//unknown type. Print it in hex
+					std::cout << std::hex << vec[i] << "\t";
+				}
+			}
+			std::cout << std::endl;
+		}
+
+		
+
+		DWORD MsidbCustomActionTypePatchUninstall = 0x00008000;  // run on patch uninstall
+
+		for (auto row : customActionTable)
+		{
+			if (cAColumns[0].type.kind != ColumnKind::OrdString)
+			{
+				Log(LogLevel::Warning, "First column in CustomAction should be a string");
+				break;
+			}
+			ASSERT_BREAK_AFTER_LOOP_1(row[0] < m_stringCount, breakAfterLoop);
+			std::string id = m_vecStrings[row[0]];
+
+			if (cAColumns[1].type.kind != ColumnKind::Number)
+			{
+				Log(LogLevel::Warning, "Second column in CustomAction should be number");
+				break;
+			}
+			DWORD type = row[1];
+
+			if (cAColumns[2].type.kind != ColumnKind::OrdString)
+			{
+				Log(LogLevel::Warning, "Second column in CustomAction should be a string");
+				break;
+			}
+
+			ASSERT_BREAK_AFTER_LOOP_1(row[2] < m_stringCount, breakAfterLoop);
+			std::string actionSource = m_vecStrings[row[2]];
+
+			ActionSourceType actionSourceType = static_cast<ActionSourceType>(type & ActionBitMask::Source);
+			
+			ActionTargetType actionTargetType = static_cast<ActionTargetType>(type & ActionBitMask::Target);
+
+			
+			switch (actionTargetType)
+			{
+			case ActionTargetType::Dll:
+			case ActionTargetType::Exe:
+				break;
+			case ActionTargetType::Text:
+				if (actionSourceType == ActionSourceType::SourceFile)
+				{
+					actionTargetType = ActionTargetType::Error;
+				}
+				break;
+			case ActionTargetType::JSCall:
+				if (actionSourceType == ActionSourceType::Directory)
+				{
+					actionTargetType = ActionTargetType::JSContent;
+				}
+				break;
+			case ActionTargetType::VBSCall:
+				if (actionSourceType == ActionSourceType::Directory)
+				{
+					actionTargetType = ActionTargetType::VBSContent;
+				}
+				break;
+			default:
+				Log(LogLevel::Warning, "Unknown custom target type");
+				break;
+			}
+
+			ASSERT_BREAK_AFTER_LOOP_1(row[3] < m_stringCount, breakAfterLoop);
+			std::string actionContent = m_vecStrings[row[3]];
+			//int elo = 3;
+		}
+		ASSERT_BREAK_AFTER_LOOP_2(breakAfterLoop);
+
+
+		if (customActionByteStream)
+		{
+			//if you want save stream, uncomment lines
+			writeToFile(CustomAction_Stream_Name, (const char*)customActionByteStream, customActionByteStreamSize);
+			std::string msg = std::string(CustomAction_Stream_Name) + " written to file";
+			Log(LogLevel::Info, msg.data());
+		}
+		Log(LogLevel::Info, "Success of reading !CustomAction table\n");
 	} 
 	while (false);
+
+	if (customActionByteStream)
+		delete[] customActionByteStream;
 
 	return status;
 }
@@ -307,23 +473,17 @@ void MsiTableParser::getColumnType(WORD columnWordType, ColumnTypeInfo& columnTy
 {
 	//1. if ( BITTEST(&type, 12) ) -> then field is nullable (can be null
 	//2. there are other types: 'o', 'v', 'f', 'g', 'j' but for as it isn't important
-	if (BITTEST(columnWordType, 11u))
+	columnTypeInfo.kind = ColumnKind::Unknown;
+	if (BITTEST(columnWordType, 11)) 
 	{
-		if (BITTEST(columnWordType, 10u))
+		if (BITTEST(columnWordType, 10) && BITTEST(columnWordType, 8))
 		{
-			if (BITTEST(columnWordType, 8u))
-				columnTypeInfo.kind = (columnWordType & 0x200) != 0 ? ColumnKind::LocString : ColumnKind::OrdString;
-			else
-				columnTypeInfo.kind = ColumnKind::Unknown;
-			columnTypeInfo.value = (unsigned __int8)columnWordType;// &0xff; //take only one byte
-		}
-		else if (BITTEST(columnWordType, 8u))
-		{
-			columnTypeInfo.kind = ColumnKind::Unknown;
-		}
-		else
-		{
-			columnTypeInfo.kind = ColumnKind::Unknown;
+			columnTypeInfo.kind = ColumnKind::OrdString;
+			if (BITTEST(columnWordType, 9))
+			{
+				columnTypeInfo.kind = ColumnKind::LocString;
+			}
+			columnTypeInfo.value = columnWordType & 0xff; //take only one byte
 		}
 	}
 	else //there is an integer
