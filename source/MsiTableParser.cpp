@@ -38,6 +38,10 @@ MsiTableParser::~MsiTableParser()
 		delete[] m_columnsByteStream;
 }
 
+/*	How I discovered that a "!_StringPool" stream contains string lengths?
+
+	Thanks for dynamic analysis with IDA
+*/
 bool MsiTableParser::initStringVector()
 {
 	bool status = false;
@@ -125,6 +129,11 @@ bool MsiTableParser::initStringVector()
 	return status;
 }
 
+/*	How I discovered that a "!_Tables" stream contains string lengths?
+
+	It was quite easy. I noticed a word count in this stream correspond to tables number
+	and that's all.
+*/
 bool MsiTableParser::printTablesFromMetadata()
 {
 	bool status = false;
@@ -161,6 +170,10 @@ bool MsiTableParser::printTablesFromMetadata()
 	return status;
 }
 
+/*	How I discovered that a "!_Columns" stream contains string lengths?
+
+	Thanks for dynamic analysis with IDA, WIX and my insights.
+*/
 bool MsiTableParser::extractColumnsFromMetadata()
 {
 	bool status = false;
@@ -231,6 +244,11 @@ bool MsiTableParser::extractColumnsFromMetadata()
 	return status;
 }
 
+/* How do I know "customAction" constatns (eg. bit masks)?
+
+	My knowledge in this field is based on WIX, excatly on "MsiInterop.cs" and "Decompiler.cs". 
+	There is information how to retrieve all information from customAction table.
+*/
 bool MsiTableParser::printCustomActionTable()
 {
 	bool status = false;
