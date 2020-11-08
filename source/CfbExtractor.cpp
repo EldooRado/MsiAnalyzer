@@ -299,22 +299,22 @@ bool CfbExtractor::readAndAllocateTable(std::string tableName, BYTE** stream, DW
 	return true;
 }
 
-/*	The names of stream which contain a msi tables are very strange. These names are conded. I spent a lot of trying a
-	find out a the pattern. Thanks to Orca.exe I was able to add my custom table names and checks how it is coded.
+/*	The names of stream which contain a msi tables are very strange. These names are encoded. I spent a lot of ttime 
+	looking for a the pattern. Thanks to Orca.exe I was able to add my custom table names and checks how it is encoded.
 
 	We can divide characters on four groups:
-	a) common characters (look on StreamNameCharacters[] below)
+	a) common characters (look at StreamNameCharacters[] below)
 		- two characters are coded on two bytes. If this coding start from odd byte, then the last byte is filled
-		  with 0x48 value. Then we got even number of bytes. The index of character is checked in StreamNameCharacters
-		  (eg. "a" has index 36) and this index is encoded in six the lower bits (from 0 - 5). Then we take a index of  
-		  second character (the same way as previous) and we encode in on the next six lower bits (from 6 - 11). Then 
+		  with 0x48 value. Then we are getting even number of bytes. The index of character is checked in StreamNameCharacters
+		  (eg. "a" has index 36) and this index is encoded in six the lower bits (from 0 - 5). Then we take an second character 
+		  index (the same way as previous) and we encode in on the next six lower bits (from 6 - 11). Then 
 		  we add 0x3800 value to our word (eg. "a4" after encoding is 0x3924)
 	b) not allowed characters (below 0x20, higher than 0x7f and '!', '%', ':', '/', '\', '`')
-		- these characters can't be coded (for obcious reasons)
+		- these characters can't be coded (for obvious reasons)
 	c) special character (sign "!" which every table need be began)
 		- is coded 0x4840 word, begins from even bytes
 	d) rest ascii characters
-		- occupy two bytes, where higherBYte is empty and char representation in ascii is coded on lower bytes 
+		- occupy two bytes, where higher byte is empty and char representation in ascii is coded on lower bytes 
 
 */
 const char StreamNameCharacters[] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A',

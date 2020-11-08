@@ -544,10 +544,14 @@ bool MsiTableParser::getTableNameIndex(std::string tableName, DWORD& index)
 	return true;
 }
 
+/*	This function is based on research from msi.dll (with IDA). I looked on "CMsiView::GetColumnTypes" 
+	and based on that I retrieved information which I need. Because I'am not interested of many types
+	(eg. object) so I treat them like a simple numbers.
+*/
 void MsiTableParser::getColumnType(WORD columnWordType, ColumnTypeInfo& columnTypeInfo)
 {
-	//1. if ( BITTEST(&type, 12) ) -> then field is nullable (can be null
-	//2. there are other types: 'o', 'v', 'f', 'g', 'j' but for as it isn't important
+	//1. if ( BITTEST(&type, 12) ) -> then field is nullable (can be null)
+	//2. there are other types: 'o', 'v', 'f', 'g', 'j' but for as are not important
 	columnTypeInfo.kind = ColumnKind::Unknown;
 	if (BITTEST(columnWordType, 11)) 
 	{
