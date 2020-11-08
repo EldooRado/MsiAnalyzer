@@ -108,7 +108,7 @@ public:
 	DirectoryEntry* m_dirEntries = nullptr;
 
 private:
-	std::string convertTableNameToString(const WORD* tableNameArray, const DWORD tableNameLength);
+	std::string convertStreamNameToReadableString(const WORD* tableNameArray, const DWORD tableNameLength);
 public:
 	CfbExtractor();
 	~CfbExtractor();

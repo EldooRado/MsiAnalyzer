@@ -263,7 +263,7 @@ void CfbExtractor::initTableNames()
 	for (DWORD i = 0; i < m_dirEntriesCount; i++)
 	{
 		const DirectoryEntry& streamEntry = m_dirEntries[i];
-		m_mapSectionNameToSectionId[convertTableNameToString(streamEntry.dirEntryName, streamEntry.dirEntryNameLength)] = i;
+		m_mapSectionNameToSectionId[convertStreamNameToReadableString(streamEntry.dirEntryName, streamEntry.dirEntryNameLength)] = i;
 	}
 }
 
@@ -299,12 +299,29 @@ bool CfbExtractor::readAndAllocateTable(std::string tableName, BYTE** stream, DW
 	return true;
 }
 
-//helpers
-const char TableNameCharacters[] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A',
+/*	The names of stream which contain a msi tables are very strange. These names are conded. I spent a lot of trying a
+	find out a the pattern. Thanks to Orca.exe I was able to add my custom table names and checks how it is coded.
+
+	We can divide characters on four groups:
+	a) common characters (look on StreamNameCharacters[] below)
+		- two characters are coded on two bytes. If this coding start from odd byte, then the last byte is filled
+		  with 0x48 value. Then we got even number of bytes. The index of character is checked in StreamNameCharacters
+		  (eg. "a" has index 36) and this index is encoded in six the lower bits (from 0 - 5). Then we take a index of  
+		  second character (the same way as previous) and we encode in on the next six lower bits (from 6 - 11). Then 
+		  we add 0x3800 value to our word (eg. "a4" after encoding is 0x3924)
+	b) not allowed characters (below 0x20, higher than 0x7f and '!', '%', ':', '/', '\', '`')
+		- these characters can't be coded (for obcious reasons)
+	c) special character (sign "!" which every table need be began)
+		- is coded 0x4840 word, begins from even bytes
+	d) rest ascii characters
+		- occupy two bytes, where higherBYte is empty and char representation in ascii is coded on lower bytes 
+
+*/
+const char StreamNameCharacters[] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A',
 'B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X',
 'Y','Z','a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z','.','_' };
 
-std::string CfbExtractor::convertTableNameToString(const WORD* tableNameArray, const DWORD tableNameLength)
+std::string CfbExtractor::convertStreamNameToReadableString(const WORD* tableNameArray, const DWORD tableNameLength)
 {
 	std::string tableName;
 	for (DWORD i = 0; i < tableNameLength / sizeof(WORD); i++)
@@ -332,12 +349,12 @@ std::string CfbExtractor::convertTableNameToString(const WORD* tableNameArray, c
 
 			//get 6 bits from lower byte
 			DWORD firstCharIndex = lowerByte & 0x3F;
-			char firstChar = TableNameCharacters[firstCharIndex];
+			char firstChar = StreamNameCharacters[firstCharIndex];
 			tableName += firstChar;
 
 			//get next 6 bits
 			DWORD secondCharIndex = (wholeWord - 0x3800) >> 6;
-			char secondChar = TableNameCharacters[secondCharIndex];
+			char secondChar = StreamNameCharacters[secondCharIndex];
 			tableName += secondChar;
 		}
 		else if (higherByte == 0x48)
@@ -352,7 +369,7 @@ std::string CfbExtractor::convertTableNameToString(const WORD* tableNameArray, c
 				//only lower byte should be processed
 				//get 6 bits from lower byte
 				DWORD firstCharIndex = lowerByte & 0x3F;
-				char firstChar = TableNameCharacters[firstCharIndex];
+				char firstChar = StreamNameCharacters[firstCharIndex];
 				tableName += firstChar;
 			}
 		}
