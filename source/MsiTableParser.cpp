@@ -1,8 +1,31 @@
 #include <vector>
+#include <filesystem>
 
 #include "MsiTableParser.h"
-#include "customActionConstants.h"
 #include "LogHelper.h"
+
+//statics
+std::map<ActionTargetType, std::string> MsiTableParser::s_mapScriptTypeToExt = { 
+	{ActionTargetType::JSContent, ".js"},
+	{ActionTargetType::VBSContent, ".vb"} 
+};
+
+std::map<ActionTargetType, std::string> MsiTableParser::s_mapActionTargetEnumToString = {
+	{ActionTargetType::Dll, "DllEntry"},
+	{ActionTargetType::Exe, "ExeCommand"},
+	{ActionTargetType::Text, "Text"},
+	{ActionTargetType::Error, "Error"},
+	{ActionTargetType::JSCall, "JSCall"},
+	{ActionTargetType::VBSCall, "VBSCall"},
+	{ActionTargetType::Install, "Install"},
+};
+
+std::map<ActionSourceType, std::string> MsiTableParser::s_mapActionScourceEnumToString = {
+	{ActionSourceType::BinaryData, "BinaryData"},
+	{ActionSourceType::SourceFile, "SourceFile"},
+	{ActionSourceType::Directory, "Directory"},
+	{ActionSourceType::Property, "Property"}
+};
 
 MsiTableParser::MsiTableParser(Ole2Extractor& extractor) : m_oleExtractor(extractor)
 {
@@ -30,7 +53,7 @@ bool MsiTableParser::initStringVector()
 		if (stringDataStream)
 		{
 			//if you want save stream, uncomment lines
-			writeToFile(StringData_Stream_Name, (const char*)stringDataStream, stringDataStreamSize);
+			writeToFile(StringData_Stream_Name, (const char*)stringDataStream, stringDataStreamSize, std::ios::binary);
 			std::string msg = std::string(StringData_Stream_Name) + " written to file";
 			Log(LogLevel::Info, msg.data());
 		}
@@ -83,7 +106,7 @@ bool MsiTableParser::initStringVector()
 		if (stringPoolByteStream)
 		{
 			//if you want save stream, uncomment lines
-			writeToFile(StringPool_Stream_Name, (const char*)stringPoolByteStream, stringPoolByteStreamSize);
+			writeToFile(StringPool_Stream_Name, (const char*)stringPoolByteStream, stringPoolByteStreamSize, std::ios::binary);
 			std::string msg = std::string(StringPool_Stream_Name) + " written to file";
 			Log(LogLevel::Info, msg.data());
 		}
@@ -126,7 +149,7 @@ bool MsiTableParser::printTablesFromMetadata()
 		if (tablesByteStream)
 		{
 			//if you want save stream, uncomment lines
-			writeToFile(Tables_Stream_Name, (const char*)tablesByteStream, tablesByteStreamSize);
+			writeToFile(Tables_Stream_Name, (const char*)tablesByteStream, tablesByteStreamSize, std::ios::binary);
 			std::string msg = std::string(Tables_Stream_Name) + " written to file";
 			Log(LogLevel::Info, msg.data());
 		}
@@ -196,7 +219,7 @@ bool MsiTableParser::extractColumnsFromMetadata()
 		if (m_columnsByteStream)
 		{
 			//if you want save stream, uncomment lines
-			writeToFile(Columns_Stream_Name, (const char*)m_columnsByteStream, columnsByteStreamSize);
+			writeToFile(Columns_Stream_Name, (const char*)m_columnsByteStream, columnsByteStreamSize, std::ios::binary);
 			std::string msg = std::string(Columns_Stream_Name) + " written to file";
 			Log(LogLevel::Info, msg.data());
 		}
@@ -214,6 +237,7 @@ bool MsiTableParser::printCustomActionTable()
 	bool breakAfterLoop = false;
 
 	BYTE* customActionByteStream = nullptr;
+	std::ofstream reportStream;
 	do {
 		//take info only about !_CustomAction table
 		//cA -> shortcut from customAction
@@ -297,45 +321,48 @@ bool MsiTableParser::printCustomActionTable()
 			}
 		}
 
+		//for (auto vec : customActionTable)
+		//{
+		//	for (DWORD i = 0; i < vec.size(); i++)
+		//	{
+		//		const ColumnTypeInfo& t = cAColumns[i].type;
+		//		if (t.kind == ColumnKind::LocString || t.kind == ColumnKind::OrdString)
+		//		{
+		//			if (vec[i] >= m_vecStrings.size())
+		//			{
+		//				//error
+		//			}
+		//			const std::string& s = m_vecStrings[vec[i]];
+		//			if (s.size() > t.value)
+		//			{
+		//				std::cout << s.substr(t.value) << "\t";
+		//			}
+		//			else
+		//			{
+		//				std::cout << s << "\t";
+		//			}
+		//			
+		//		}
+		//		else if (t.kind == ColumnKind::Number)
+		//		{
+		//			std::cout << vec[i] << "\t";
+		//		}
+		//		else
+		//		{
+		//			//unknown type. Print it in hex
+		//			std::cout << std::hex << vec[i] << "\t";
+		//		}
+		//	}
+		//	std::cout << std::endl;
+		//}
 
-		for (auto vec : customActionTable)
+		const std::string reportFileName = "msiAnalyzeReport.txt";
+		reportStream.open(reportFileName);
+		if (!reportStream)
 		{
-			for (DWORD i = 0; i < vec.size(); i++)
-			{
-				const ColumnTypeInfo& t = cAColumns[i].type;
-				if (t.kind == ColumnKind::LocString || t.kind == ColumnKind::OrdString)
-				{
-					if (vec[i] >= m_vecStrings.size())
-					{
-						//error
-					}
-					const std::string& s = m_vecStrings[vec[i]];
-					if (s.size() > t.value)
-					{
-						std::cout << s.substr(t.value) << "\t";
-					}
-					else
-					{
-						std::cout << s << "\t";
-					}
-					
-				}
-				else if (t.kind == ColumnKind::Number)
-				{
-					std::cout << vec[i] << "\t";
-				}
-				else
-				{
-					//unknown type. Print it in hex
-					std::cout << std::hex << vec[i] << "\t";
-				}
-			}
-			std::cout << std::endl;
+			Log(LogLevel::Error, "Cannot open report file");
+			break;
 		}
-
-		
-
-		DWORD MsidbCustomActionTypePatchUninstall = 0x00008000;  // run on patch uninstall
 
 		for (auto row : customActionTable)
 		{
@@ -354,19 +381,8 @@ bool MsiTableParser::printCustomActionTable()
 			}
 			DWORD type = row[1];
 
-			if (cAColumns[2].type.kind != ColumnKind::OrdString)
-			{
-				Log(LogLevel::Warning, "Second column in CustomAction should be a string");
-				break;
-			}
-
-			ASSERT_BREAK_AFTER_LOOP_1(row[2] < m_stringCount, breakAfterLoop);
-			std::string actionSource = m_vecStrings[row[2]];
-
 			ActionSourceType actionSourceType = static_cast<ActionSourceType>(type & ActionBitMask::Source);
-			
 			ActionTargetType actionTargetType = static_cast<ActionTargetType>(type & ActionBitMask::Target);
-
 			
 			switch (actionTargetType)
 			{
@@ -391,14 +407,70 @@ bool MsiTableParser::printCustomActionTable()
 					actionTargetType = ActionTargetType::VBSContent;
 				}
 				break;
+
+			//add powershell scripts
+
 			default:
 				Log(LogLevel::Warning, "Unknown custom target type");
-				break;
+				continue;
 			}
 
+			if (cAColumns[2].type.kind != ColumnKind::OrdString)
+			{
+				Log(LogLevel::Warning, "Third column in CustomAction should be a string");
+				break;
+			}
+			ASSERT_BREAK_AFTER_LOOP_1(row[2] < m_stringCount, breakAfterLoop);
+			std::string actionSource = m_vecStrings[row[2]];
+
+			if (cAColumns[3].type.kind != ColumnKind::OrdString)
+			{
+				Log(LogLevel::Warning, "Fourth column in CustomAction should be a string");
+				break;
+			}
 			ASSERT_BREAK_AFTER_LOOP_1(row[3] < m_stringCount, breakAfterLoop);
 			std::string actionContent = m_vecStrings[row[3]];
-			//int elo = 3;
+
+			switch (actionTargetType)
+			{
+			//save script to separate file
+			case ActionTargetType::JSContent:
+			case ActionTargetType::VBSContent:
+			{
+				const std::string scriptFolder = "scripts";
+				if (std::experimental::filesystem::exists(scriptFolder))
+				{
+					Log(LogLevel::Warning, "Scripts folder already exist.");
+				}
+				else
+				{
+					if (!std::experimental::filesystem::create_directories(scriptFolder))
+					{
+						Log(LogLevel::Warning, "Can't create scripts folder");
+						continue;
+					}
+				}
+
+				if (id.empty())
+					id = "unknown_id";
+
+				if (id.size() < 3 || id.substr(id.size() -3, 3).compare(s_mapScriptTypeToExt[actionTargetType]) != 0)
+				{
+					id += s_mapScriptTypeToExt[actionTargetType];
+				}
+				std::string scriptPath = scriptFolder + "\\" + id;
+				ASSERT_BREAK_AFTER_LOOP_1(writeToFile(scriptPath, actionContent.data(), actionContent.size()), breakAfterLoop);
+				break;
+			}
+			//and every action to report
+			default:
+			{
+				reportStream << "ID: " << id << " \t" << s_mapActionScourceEnumToString[actionSourceType] <<
+					" = \"" << actionSource << "\" \t" << s_mapActionTargetEnumToString[actionTargetType] <<
+					" = \"" << actionContent << "\"" << std::endl;
+				break;
+			}
+			}
 		}
 		ASSERT_BREAK_AFTER_LOOP_2(breakAfterLoop);
 
@@ -406,7 +478,7 @@ bool MsiTableParser::printCustomActionTable()
 		if (customActionByteStream)
 		{
 			//if you want save stream, uncomment lines
-			writeToFile(CustomAction_Stream_Name, (const char*)customActionByteStream, customActionByteStreamSize);
+			writeToFile(CustomAction_Stream_Name, (const char*)customActionByteStream, customActionByteStreamSize, std::ios::binary);
 			std::string msg = std::string(CustomAction_Stream_Name) + " written to file";
 			Log(LogLevel::Info, msg.data());
 		}
@@ -417,13 +489,16 @@ bool MsiTableParser::printCustomActionTable()
 	if (customActionByteStream)
 		delete[] customActionByteStream;
 
+	if (reportStream.is_open())
+		reportStream.close();
+
 	return status;
 }
 
 //write to file helper
-bool MsiTableParser::writeToFile(std::string fileName, const char* pStream, size_t streamSize)
+bool MsiTableParser::writeToFile(std::string fileName, const char* pStream, size_t streamSize, std::ios_base::openmode mod)
 {
-	std::ofstream outputFile(fileName, std::ios::binary);
+	std::ofstream outputFile(fileName, mod);
 	if (!outputFile)
 	{
 		//maybe filename is inappropriate? maybe to long?

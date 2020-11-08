@@ -23,7 +23,7 @@ int main(int argc, char* argv[])
 		std::cout << "MsiAnalyzer.exe <msi_file>" << std::endl;
 		return -2;
 	}*/
-	szMsiName = "C:\\work\\msi\\tools\\javascript.msi";
+	szMsiName = "C:\\work\\msi\\tools\\wixedit-0.7.5.msi";
 	Ole2Extractor extractor;
 	ASSERT(extractor.initialize(szMsiName));
 	Log(LogLevel::Info, "Success of initialize extractor");
