@@ -1,15 +1,15 @@
 #include <fstream>
 
-#include "Ole2Extractor.h"
+#include "CfbExtractor.h"
 #include "readHelper.h"
 #include "LogHelper.h"
 
-Ole2Extractor::Ole2Extractor()
+CfbExtractor::CfbExtractor()
 {
 
 }
 
-Ole2Extractor::~Ole2Extractor()
+CfbExtractor::~CfbExtractor()
 {
 	if (m_fatEntries)
 		delete[] m_fatEntries;
@@ -27,7 +27,7 @@ Ole2Extractor::~Ole2Extractor()
 		m_input.close();
 }
 
-bool Ole2Extractor::initialize(const std::string fullPath)
+bool CfbExtractor::initialize(const std::string fullPath)
 {
 	m_input.open(fullPath, std::ios::binary);
 	if (!m_input.is_open())
@@ -50,74 +50,74 @@ bool Ole2Extractor::initialize(const std::string fullPath)
 
 	Log(LogLevel::Info, "File SIze: ", m_fileSize);
 
-	if (!readType(m_input, m_oleHeader))
+	if (!readType(m_input, m_cfbHeader))
 	{
-		Log(LogLevel::Error, "Problem with load oleHeader");
+		Log(LogLevel::Error, "Problem with load cfbHeader");
 		return false;
 	}
 	return true;
 }
 
-bool Ole2Extractor::parseOleHeader()
+bool CfbExtractor::parseCfbHeader()
 {
-	constexpr QWORD OLE_MAGIC = 0xe11ab1a1e011cfd0;
-	if (m_oleHeader.oleMagic != OLE_MAGIC)
+	constexpr QWORD Cfb_Magic = 0xe11ab1a1e011cfd0;
+	if (m_cfbHeader.cfbMagic != Cfb_Magic)
 	{
 		Log(LogLevel::Warning, "Invalid magic");
 		return false;
 	}
 
-	if (m_oleHeader.majorVer != 3 && m_oleHeader.majorVer != 4)
+	if (m_cfbHeader.majorVer != 3 && m_cfbHeader.majorVer != 4)
 	{
 		Log(LogLevel::Warning, "Invalid majorVer");
 		return false;
 	}
 
 	constexpr WORD Little_Endian = 0xFFFE;
-	if (m_oleHeader.byteOrder != Little_Endian)
+	if (m_cfbHeader.byteOrder != Little_Endian)
 	{
 		Log(LogLevel::Warning, "Invalid byteOrder");
 		return false;
 	}
 
-	if (!(m_oleHeader.majorVer == 3 && m_oleHeader.secShift == 9) && !(m_oleHeader.majorVer == 4 && m_oleHeader.secShift == 0x000c))
+	if (!(m_cfbHeader.majorVer == 3 && m_cfbHeader.secShift == 9) && !(m_cfbHeader.majorVer == 4 && m_cfbHeader.secShift == 0x000c))
 	{
 		Log(LogLevel::Warning, "Invalid secShift");
 		return false;
 	}
 
-	if (m_oleHeader.majorVer == 3 && m_oleHeader.dirSecNum != 0)
+	if (m_cfbHeader.majorVer == 3 && m_cfbHeader.dirSecNum != 0)
 	{
 		Log(LogLevel::Warning, "dirSecNum for version 3 should be 0");
 		return false;
 	}
 
-	if (m_oleHeader.miniSecShift != 6)
+	if (m_cfbHeader.miniSecShift != 6)
 	{
 		Log(LogLevel::Warning, "Invalid miniSecShift");
 		return false;
 	}
 
 	constexpr DWORD Min_Stream_Size = 0x00001000;
-	if (m_oleHeader.minStreamSize != Min_Stream_Size)
+	if (m_cfbHeader.minStreamSize != Min_Stream_Size)
 	{
 		Log(LogLevel::Warning, "Invalid minStreamSize");
 		return false;
 	}
 
-	if (m_oleHeader.fatSecNum == 0)
+	if (m_cfbHeader.fatSecNum == 0)
 	{
 		Log(LogLevel::Error, "fatSecNum == 0");
 		return false;
 	}
-	else if (m_oleHeader.fatSecNum > 1 && m_oleHeader.fatSecNum <= 109)
+	else if (m_cfbHeader.fatSecNum > 1 && m_cfbHeader.fatSecNum <= 109)
 	{
 		Log(LogLevel::Info, "Multiple fat sections");
 		//return false;
 	}
-	else if (m_oleHeader.fatSecNum > 109)
+	else if (m_cfbHeader.fatSecNum > 109)
 	{
-		if (m_oleHeader.difatSecNum == 0)
+		if (m_cfbHeader.difatSecNum == 0)
 		{
 			Log(LogLevel::Warning, "Difat section should be present");
 			return false;
@@ -126,10 +126,10 @@ bool Ole2Extractor::parseOleHeader()
 		//return false;
 	}
 
-	m_sectionSize = 1 << m_oleHeader.secShift;
+	m_sectionSize = 1 << m_cfbHeader.secShift;
 	Log(LogLevel::Info, "Sector size = ", m_sectionSize);
 
-	m_miniSectionSize = 1 << m_oleHeader.miniSecShift;
+	m_miniSectionSize = 1 << m_cfbHeader.miniSecShift;
 	Log(LogLevel::Info, "Sector size = ", m_miniSectionSize);
 
 	m_sectionCount = m_fileSize / m_sectionSize - 1;
@@ -139,35 +139,35 @@ bool Ole2Extractor::parseOleHeader()
 	}
 	Log(LogLevel::Info, "Sections number = ", m_sectionCount);
 
-	if (m_oleHeader.difatArray[0] >= m_sectionCount - 1)
+	if (m_cfbHeader.difatArray[0] >= m_sectionCount - 1)
 	{
-		Log(LogLevel::Error, "Incorrect index of fat section: ", m_oleHeader.difatArray[0]);
+		Log(LogLevel::Error, "Incorrect index of fat section: ", m_cfbHeader.difatArray[0]);
 		return false;
 	}
 	return true;
 }
 
-bool Ole2Extractor::loadFatEntries()
+bool CfbExtractor::loadFatEntries()
 {
 	bool status = false;
 	//difat array
 	const DWORD dwordsInSection = m_sectionSize / sizeof(DWORD);
-	DWORD * difatEntries = new DWORD[m_oleHeader.fatSecNum];
+	DWORD * difatEntries = new DWORD[m_cfbHeader.fatSecNum];
 
 	do {
-		if (m_oleHeader.fatSecNum <= MAX_FAT_SECTIONS_COUNT_IN_HEADER)
+		if (m_cfbHeader.fatSecNum <= MAX_FAT_SECTIONS_COUNT_IN_HEADER)
 		{
-			::memcpy(difatEntries, m_oleHeader.difatArray, m_oleHeader.fatSecNum * sizeof(DWORD));
+			::memcpy(difatEntries, m_cfbHeader.difatArray, m_cfbHeader.fatSecNum * sizeof(DWORD));
 		}
 		else
 		{
 			const DWORD difatInHeaderSize = MAX_FAT_SECTIONS_COUNT_IN_HEADER * sizeof(DWORD);
-			::memcpy(difatEntries, m_oleHeader.difatArray, difatInHeaderSize);
-			DWORD difatSecId = m_oleHeader.firstDifatSecId;
-			DWORD difatsToRead = m_oleHeader.fatSecNum - MAX_FAT_SECTIONS_COUNT_IN_HEADER;
+			::memcpy(difatEntries, m_cfbHeader.difatArray, difatInHeaderSize);
+			DWORD difatSecId = m_cfbHeader.firstDifatSecId;
+			DWORD difatsToRead = m_cfbHeader.fatSecNum - MAX_FAT_SECTIONS_COUNT_IN_HEADER;
 			const DWORD maxDifatsInSections = dwordsInSection - 1;
 
-			for (DWORD i = 0; i < m_oleHeader.difatSecNum; i++)
+			for (DWORD i = 0; i < m_cfbHeader.difatSecNum; i++)
 			{
 				DWORD dwordsCountToReadInThisIter = maxDifatsInSections;
 				if (difatsToRead < maxDifatsInSections)
@@ -182,10 +182,10 @@ bool Ole2Extractor::loadFatEntries()
 		}
 
 		//fat section
-		const DWORD maxFatArraySize = m_oleHeader.fatSecNum * dwordsInSection;
+		const DWORD maxFatArraySize = m_cfbHeader.fatSecNum * dwordsInSection;
 
 		m_fatEntries = new DWORD[maxFatArraySize];
-		for (DWORD i = 0; i < m_oleHeader.fatSecNum; i++)
+		for (DWORD i = 0; i < m_cfbHeader.fatSecNum; i++)
 		{
 			DWORD fatSectionOffset = (difatEntries[i] + 1) * m_sectionSize;
 			ASSERT_BOOL(readArray(m_input, m_fatEntries + i * dwordsInSection, dwordsInSection, fatSectionOffset))
@@ -205,24 +205,24 @@ bool Ole2Extractor::loadFatEntries()
 	return status;
 }
 
-bool Ole2Extractor::loadMiniFatEntries()
+bool CfbExtractor::loadMiniFatEntries()
 {
 	//minifat section
 	const DWORD miniFatEntriesInSection = m_sectionSize / sizeof(DWORD);
-	m_miniFatArraySize = m_oleHeader.miniFatSecNum * miniFatEntriesInSection;
-	const DWORD miniFatDataSize = m_oleHeader.miniFatSecNum * m_sectionSize;
+	m_miniFatArraySize = m_cfbHeader.miniFatSecNum * miniFatEntriesInSection;
+	const DWORD miniFatDataSize = m_cfbHeader.miniFatSecNum * m_sectionSize;
 	m_miniFatEntries = new DWORD[m_miniFatArraySize];
-	ASSERT_BOOL(readChunkOfDataFromOle2(m_input, m_miniFatEntries, m_oleHeader.firstMiniSecId, miniFatDataSize, m_sectionSize, m_fatEntries, m_sectionCount));
+	ASSERT_BOOL(readChunkOfDataFromCfb(m_input, m_miniFatEntries, m_cfbHeader.firstMiniSecId, miniFatDataSize, m_sectionSize, m_fatEntries, m_sectionCount));
 	Log(LogLevel::Info, "Getting minifat section success");
 	return true;
 }
 
-bool Ole2Extractor::loadDirEntries()
+bool CfbExtractor::loadDirEntries()
 {
 	//dir section
-	DWORD dirSecNum = m_oleHeader.dirSecNum;
-	DWORD dirSecId = m_oleHeader.firstDirSecId;
-	if (m_oleHeader.majorVer == 3)
+	DWORD dirSecNum = m_cfbHeader.dirSecNum;
+	DWORD dirSecId = m_cfbHeader.firstDirSecId;
+	if (m_cfbHeader.majorVer == 3)
 	{
 		//dirSecNum is not used in version 3 so we need to count this number
 		while (dirSecId != ENDOFCHAIN)
@@ -242,23 +242,23 @@ bool Ole2Extractor::loadDirEntries()
 	m_dirEntriesCount = dirSecNum * dirEntriesInSection;
 	const DWORD dirDataSize = dirSecNum * m_sectionSize;
 	m_dirEntries = new DirectoryEntry[m_dirEntriesCount];
-	ASSERT_BOOL(readChunkOfDataFromOle2(m_input, m_dirEntries, m_oleHeader.firstDirSecId, dirDataSize, m_sectionSize, m_fatEntries, m_sectionCount));
+	ASSERT_BOOL(readChunkOfDataFromCfb(m_input, m_dirEntries, m_cfbHeader.firstDirSecId, dirDataSize, m_sectionSize, m_fatEntries, m_sectionCount));
 	m_rootDirEntry = m_dirEntries[0];
 	Log(LogLevel::Info, "Getting dir section success");
 	return true;
 }
 
-bool Ole2Extractor::loadMiniStreamEntries()
+bool CfbExtractor::loadMiniStreamEntries()
 {
 	//mini stream
 	DWORD miniStreamSize = static_cast<DWORD>(m_rootDirEntry.streamSize);
 	m_miniStream = new BYTE[miniStreamSize];
-	ASSERT_BOOL(readChunkOfDataFromOle2(m_input, m_miniStream, m_rootDirEntry.startSecLocation, miniStreamSize, m_sectionSize, m_fatEntries, m_sectionCount));
+	ASSERT_BOOL(readChunkOfDataFromCfb(m_input, m_miniStream, m_rootDirEntry.startSecLocation, miniStreamSize, m_sectionSize, m_fatEntries, m_sectionCount));
 	Log(LogLevel::Info, "Getting ministream section success");
 	return true;
 }
 
-void Ole2Extractor::initTableNames()
+void CfbExtractor::initTableNames()
 {
 	for (DWORD i = 0; i < m_dirEntriesCount; i++)
 	{
@@ -267,7 +267,7 @@ void Ole2Extractor::initTableNames()
 	}
 }
 
-bool Ole2Extractor::readAndAllocateTable(std::string tableName, BYTE** stream, DWORD& streamSize)
+bool CfbExtractor::readAndAllocateTable(std::string tableName, BYTE** stream, DWORD& streamSize)
 {
 	if (m_mapSectionNameToSectionId.count(tableName) <= 0)
 	{
@@ -282,14 +282,14 @@ bool Ole2Extractor::readAndAllocateTable(std::string tableName, BYTE** stream, D
 		streamSize = static_cast<DWORD>(streamEntry.streamSize);
 		*stream = new BYTE[streamSize];
 
-		if (streamSize <= m_oleHeader.minStreamSize)
+		if (streamSize <= m_cfbHeader.minStreamSize)
 		{
 			//data is stored in miniStream
-			ASSERT_BOOL(readChunkOfDataFromOle2(m_miniStream, *stream, streamSecId, streamSize, m_miniSectionSize, m_miniFatEntries, m_miniFatArraySize, true));
+			ASSERT_BOOL(readChunkOfDataFromCfb(m_miniStream, *stream, streamSecId, streamSize, m_miniSectionSize, m_miniFatEntries, m_miniFatArraySize, true));
 		}
 		else
 		{
-			ASSERT_BOOL(readChunkOfDataFromOle2(m_input, *stream, streamSecId, streamSize, m_sectionSize, m_fatEntries, m_sectionCount, false));
+			ASSERT_BOOL(readChunkOfDataFromCfb(m_input, *stream, streamSecId, streamSize, m_sectionSize, m_fatEntries, m_sectionCount, false));
 		}
 	}
 	else
@@ -304,7 +304,7 @@ const char TableNameCharacters[] = { '0', '1', '2', '3', '4', '5', '6', '7', '8'
 'B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X',
 'Y','Z','a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z','.','_' };
 
-std::string Ole2Extractor::convertTableNameToString(const WORD* tableNameArray, const DWORD tableNameLength)
+std::string CfbExtractor::convertTableNameToString(const WORD* tableNameArray, const DWORD tableNameLength)
 {
 	std::string tableName;
 	for (DWORD i = 0; i < tableNameLength / sizeof(WORD); i++)

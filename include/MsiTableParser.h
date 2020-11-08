@@ -1,5 +1,7 @@
 #pragma once
-#include "Ole2Extractor.h"
+#include <map>
+
+#include "CfbExtractor.h"
 #include "customActionConstants.h"
 
 enum class ColumnKind
@@ -38,9 +40,9 @@ private:
 	static constexpr char CustomAction_Table_Name[] = "CustomAction";
 
 	//MEMBERS
-	//when I try make it const, then some methods from Ole2Extractor must be const
+	//when I try make it const, then some methods from CfbExtractor must be const
 	// and then occurs problem with templates. Strange thing
-	Ole2Extractor& m_oleExtractor;
+	CfbExtractor& m_cfbExtractor;
 	std::vector<std::string> m_vecStrings;
 	std::vector<DWORD> m_tableNameIndices;
 	
@@ -58,7 +60,7 @@ private:
 
 	//METHODS
 public:
-	MsiTableParser(Ole2Extractor& extractor);
+	MsiTableParser(CfbExtractor& extractor);
 	~MsiTableParser();
 	bool initStringVector();
 	bool printTablesFromMetadata();

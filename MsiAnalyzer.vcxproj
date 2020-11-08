@@ -22,14 +22,14 @@
     <ClCompile Include="source\LogHelper.cpp" />
     <ClCompile Include="source\main.cpp" />
     <ClCompile Include="source\MsiTableParser.cpp" />
-    <ClCompile Include="source\Ole2Extractor.cpp" />
+    <ClCompile Include="source\CfbExtractor.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\common.h" />
     <ClInclude Include="include\customActionConstants.h" />
     <ClInclude Include="include\LogHelper.h" />
     <ClInclude Include="include\MsiTableParser.h" />
-    <ClInclude Include="include\Ole2Extractor.h" />
+    <ClInclude Include="include\CfbExtractor.h" />
     <ClInclude Include="include\readHelper.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">

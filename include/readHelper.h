@@ -70,7 +70,7 @@ bool readArray(BYTE* arrayStream, T* data, DWORD size, DWORD offset = -1)
 }
 
 template <typename T, typename U>
-bool readChunkOfDataFromOle2(T& inputStream, U * outputStream, DWORD sectorIndex, QWORD streamToReadSize,
+bool readChunkOfDataFromCfb(T& inputStream, U * outputStream, DWORD sectorIndex, QWORD streamToReadSize,
 	DWORD sectionSize, DWORD* sectionInfoArray, DWORD sectionArraySize, bool readFromMiniStream = false)
 {
 	const DWORD elementsInSection = sectionSize / sizeof(U);

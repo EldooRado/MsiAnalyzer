@@ -4,7 +4,8 @@
 
 #include "common.h"
 
-//2.2 Compound File Header
+// a whole implementation is based on: 
+// [MS-CFB]: Compound File Binary File Format
 
 //defines
 #define MAX_FAT_SECTIONS_COUNT_IN_HEADER 0x6D
@@ -30,9 +31,9 @@ enum DirEntryType
 
 //structures
 #pragma pack(push, 2)
-struct OleHeader
+struct CfbHeader
 {
-	QWORD oleMagic;				//0x00, MUST be set to the value 0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1.
+	QWORD cfbMagic;				//0x00, MUST be set to the value 0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1.
 	BYTE clsid[0x10];			//0x08, MUST be set to all zeroes
 	WORD minorVer;				//0x18, SHOULD be set to 0x003E if the major version field is either 0x0003 or 0x0004.
 	WORD majorVer;				//0x1A, MUST be set to either 0x0003 (version 3) or 0x0004 (version 4)
@@ -53,7 +54,7 @@ struct OleHeader
 };
 /* important: version 4 compound files, the header size (512 bytes) is less than the sector size (4,096 bytes),
    so the remaining part of the header (3,584 bytes) MUST be filled with all zeroes */
-static_assert(sizeof(OleHeader) == 0x200, "OleHeader incorrect size");
+static_assert(sizeof(CfbHeader) == 0x200, "CfbHeader incorrect size");
 
 
 struct DirectoryEntry
@@ -85,11 +86,11 @@ static_assert(sizeof(TableNameWchar) == 0x2, "TableNameWchar incorrect size");
 #pragma pack(pop)
 
 
-class Ole2Extractor
+class CfbExtractor
 {
 private:
 	std::ifstream m_input;
-	OleHeader m_oleHeader;
+	CfbHeader m_cfbHeader;
 	DWORD m_fileSize = 0;
 	DWORD m_sectionCount = 0;
 	DWORD m_sectionSize = 0;
@@ -109,10 +110,10 @@ public:
 private:
 	std::string convertTableNameToString(const WORD* tableNameArray, const DWORD tableNameLength);
 public:
-	Ole2Extractor();
-	~Ole2Extractor();
+	CfbExtractor();
+	~CfbExtractor();
 	bool initialize(const std::string msiName);
-	bool parseOleHeader();
+	bool parseCfbHeader();
 	bool loadFatEntries();
 	bool loadMiniFatEntries();
 	bool loadDirEntries();

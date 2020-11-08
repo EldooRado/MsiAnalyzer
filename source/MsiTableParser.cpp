@@ -27,7 +27,7 @@ std::map<ActionSourceType, std::string> MsiTableParser::s_mapActionScourceEnumTo
 	{ActionSourceType::Property, "Property"}
 };
 
-MsiTableParser::MsiTableParser(Ole2Extractor& extractor) : m_oleExtractor(extractor)
+MsiTableParser::MsiTableParser(CfbExtractor& extractor) : m_cfbExtractor(extractor)
 {
 
 }
@@ -48,7 +48,7 @@ bool MsiTableParser::initStringVector()
 	do {
 		//get StringData
 		DWORD stringDataStreamSize = 0;
-		ASSERT_BREAK(m_oleExtractor.readAndAllocateTable(StringData_Stream_Name, &stringDataStream, stringDataStreamSize));
+		ASSERT_BREAK(m_cfbExtractor.readAndAllocateTable(StringData_Stream_Name, &stringDataStream, stringDataStreamSize));
 
 		if (stringDataStream)
 		{
@@ -61,7 +61,7 @@ bool MsiTableParser::initStringVector()
 
 		//get StringPool
 		DWORD stringPoolByteStreamSize = 0;
-		ASSERT_BREAK(m_oleExtractor.readAndAllocateTable(StringPool_Stream_Name, &stringPoolByteStream, stringPoolByteStreamSize));
+		ASSERT_BREAK(m_cfbExtractor.readAndAllocateTable(StringPool_Stream_Name, &stringPoolByteStream, stringPoolByteStreamSize));
 
 		m_stringCount = stringPoolByteStreamSize / sizeof(DWORD);
 
@@ -133,7 +133,7 @@ bool MsiTableParser::printTablesFromMetadata()
 	do {
 		//get StringData
 		DWORD tablesByteStreamSize = 0;
-		ASSERT_BREAK(m_oleExtractor.readAndAllocateTable(Tables_Stream_Name, &tablesByteStream, tablesByteStreamSize));
+		ASSERT_BREAK(m_cfbExtractor.readAndAllocateTable(Tables_Stream_Name, &tablesByteStream, tablesByteStreamSize));
 
 		WORD* tablesStream = (WORD*)tablesByteStream;
 		std::cout << "Tables:\n";
@@ -168,7 +168,7 @@ bool MsiTableParser::extractColumnsFromMetadata()
 	do {
 		//get StringData
 		DWORD columnsByteStreamSize = 0;
-		ASSERT_BREAK(m_oleExtractor.readAndAllocateTable(Columns_Stream_Name, &m_columnsByteStream, columnsByteStreamSize));
+		ASSERT_BREAK(m_cfbExtractor.readAndAllocateTable(Columns_Stream_Name, &m_columnsByteStream, columnsByteStreamSize));
 
 		WORD* columnsStream = (WORD*)m_columnsByteStream;
 
@@ -287,7 +287,7 @@ bool MsiTableParser::printCustomActionTable()
 		ASSERT_BREAK_AFTER_LOOP_2(breakAfterLoop);
 
 		DWORD customActionByteStreamSize = 0;
-		ASSERT_BREAK(m_oleExtractor.readAndAllocateTable(CustomAction_Stream_Name, &customActionByteStream, customActionByteStreamSize));
+		ASSERT_BREAK(m_cfbExtractor.readAndAllocateTable(CustomAction_Stream_Name, &customActionByteStream, customActionByteStreamSize));
 
 		const DWORD rowCount = customActionByteStreamSize / oneRowByteSize;
 		if (customActionByteStreamSize % oneRowByteSize)

@@ -1,7 +1,7 @@
 #include <fstream>
 #include <filesystem>
 
-#include "Ole2Extractor.h"
+#include "CfbExtractor.h"
 #include "MsiTableParser.h"
 #include "LogHelper.h"
 
@@ -24,12 +24,12 @@ int main(int argc, char* argv[])
 		return -2;
 	}*/
 	szMsiName = "C:\\work\\msi\\tools\\wixedit-0.7.5.msi";
-	Ole2Extractor extractor;
+	CfbExtractor extractor;
 	ASSERT(extractor.initialize(szMsiName));
 	Log(LogLevel::Info, "Success of initialize extractor");
 
-	ASSERT(extractor.parseOleHeader());
-	Log(LogLevel::Info, "Success of parsing oleHeader");
+	ASSERT(extractor.parseCfbHeader());
+	Log(LogLevel::Info, "Success of parsing cfbHeader");
 
 	ASSERT(extractor.loadFatEntries());
 	Log(LogLevel::Info, "Success of loading fatEntries");
