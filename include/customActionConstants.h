@@ -21,6 +21,10 @@ enum class ActionTargetType
 	Error,
 	JSContent,
 	VBSContent,
+
+	//feature from advancedInstaller
+	PS1Call,
+	PS1Content,
 };
 
 namespace ActionBitMask

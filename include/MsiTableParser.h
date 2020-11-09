@@ -71,10 +71,9 @@ private:
 	bool writeToFile(std::string fileName, const char* pStream, size_t streamSize, std::ios_base::openmode mod = std::ios::out);
 	bool getTableNameIndex(std::string tableName, DWORD& index);
 	void getColumnType(WORD columnWordType, ColumnTypeInfo& columnTypeInfo);
+	bool transformPS1Script(const std::string rawScript, std::string& decodedScript);
 
 	//statics
-	//key: ActionTargetType, value: script extension (".js" or ".vbs")
-	static std::map<ActionTargetType, std::string> s_mapScriptTypeToExt;
 	//key: ActionTargetType, value: actionTarget name (eg. "ExeCommand")
 	static std::map<ActionTargetType, std::string> s_mapActionTargetEnumToString;
 	//key: ActionSourceType, value: actionSource name (eg. "Directory")

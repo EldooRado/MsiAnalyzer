@@ -4,12 +4,6 @@
 #include "MsiTableParser.h"
 #include "LogHelper.h"
 
-//statics
-std::map<ActionTargetType, std::string> MsiTableParser::s_mapScriptTypeToExt = { 
-	{ActionTargetType::JSContent, ".js"},
-	{ActionTargetType::VBSContent, ".vb"} 
-};
-
 std::map<ActionTargetType, std::string> MsiTableParser::s_mapActionTargetEnumToString = {
 	{ActionTargetType::Dll, "DllEntry"},
 	{ActionTargetType::Exe, "ExeCommand"},
@@ -17,11 +11,12 @@ std::map<ActionTargetType, std::string> MsiTableParser::s_mapActionTargetEnumToS
 	{ActionTargetType::Error, "Error"},
 	{ActionTargetType::JSCall, "JSCall"},
 	{ActionTargetType::VBSCall, "VBSCall"},
+	{ActionTargetType::PS1Call, "PS1Call"},
 	{ActionTargetType::Install, "Install"},
 };
 
 std::map<ActionSourceType, std::string> MsiTableParser::s_mapActionScourceEnumToString = {
-	{ActionSourceType::BinaryData, "BinaryData"},
+	{ActionSourceType::BinaryData, "File"},
 	{ActionSourceType::SourceFile, "SourceFile"},
 	{ActionSourceType::Directory, "Directory"},
 	{ActionSourceType::Property, "Property"}
@@ -375,8 +370,13 @@ bool MsiTableParser::analyzeCustomActionTable()
 		}
 
 		//analyze data in customAction table
+		const char Script_Preamble[] = "\1ScriptPreamble\2";
+		bool scriptPreambleIsPresent = false;
+		std::string scriptPreamble;
+
 		for (auto row : customActionTable)
 		{
+			//read row
 			if (cAColumns[0].type.kind != ColumnKind::OrdString)
 			{
 				Log(LogLevel::Warning, "First column in CustomAction should be a string");
@@ -384,6 +384,8 @@ bool MsiTableParser::analyzeCustomActionTable()
 			}
 			
 			std::string id = m_vecStrings[row[0]];
+			if (id.empty())
+				id = "unknown_id";
 
 			if (cAColumns[1].type.kind != ColumnKind::Number)
 			{
@@ -391,6 +393,23 @@ bool MsiTableParser::analyzeCustomActionTable()
 				ASSERT_BREAK_AFTER_LOOP_1(false, breakAfterLoop);
 			}
 			DWORD type = row[1];
+
+			if (cAColumns[2].type.kind != ColumnKind::OrdString)
+			{
+				Log(LogLevel::Warning, "Third column in CustomAction should be a string");
+				ASSERT_BREAK_AFTER_LOOP_1(false, breakAfterLoop);
+			}
+			ASSERT_BREAK_AFTER_LOOP_1(row[2] < m_stringCount, breakAfterLoop);
+			std::string actionSource = m_vecStrings[row[2]];
+
+			if (cAColumns[3].type.kind != ColumnKind::OrdString)
+			{
+				Log(LogLevel::Warning, "Fourth column in CustomAction should be a string");
+				ASSERT_BREAK_AFTER_LOOP_1(false, breakAfterLoop);
+			}
+			ASSERT_BREAK_AFTER_LOOP_1(row[3] < m_stringCount, breakAfterLoop);
+			std::string actionContent = m_vecStrings[row[3]];
+			//end read row
 
 			ActionSourceType actionSourceType = static_cast<ActionSourceType>(type & ActionBitMask::Source);
 			ActionTargetType actionTargetType = static_cast<ActionTargetType>(type & ActionBitMask::Target);
@@ -405,17 +424,130 @@ bool MsiTableParser::analyzeCustomActionTable()
 				{
 					actionTargetType = ActionTargetType::Error;
 				}
+				else if (actionSourceType == ActionSourceType::Property)
+				{
+					//it can be powershell
+					if (id.compare("AI_DATA_SETTER") == 0)
+					{
+						if (actionSource.compare("CustomActionData") == 0)
+						{
+							//script
+							const char PS1_Script_Magic[] = "\1Script\2";
+							DWORD scriptMagicBegin = 0;
+							if (scriptMagicBegin = actionContent.find(PS1_Script_Magic))
+							{
+								//this is powershell script
+								const char Params_Magic[] = "\1Params\2";
+								DWORD paramsMagicBegin = 0;
+								std::string params;
+								if (paramsMagicBegin = actionContent.find(Params_Magic))
+								{
+									DWORD paramsBegin = paramsMagicBegin + sizeof(Params_Magic) - 1;
+									ASSERT_BREAK_AFTER_LOOP_1(scriptMagicBegin > paramsBegin, breakAfterLoop);
+									params = "#INPUT PARAMETERS\r\n#" + actionContent.substr(paramsBegin, scriptMagicBegin - paramsBegin) + "\r\n";
+								}
+
+								std::string actionContentCopy = actionContent;
+
+								DWORD scriptBegin = scriptMagicBegin + sizeof(PS1_Script_Magic) - 1;
+								actionContent = actionContent.substr(scriptBegin);
+								actionTargetType = ActionTargetType::PS1Content;
+
+								if (actionContent.find(Script_Preamble, scriptBegin + 1))
+								{
+									DWORD scriptPreambleMagicBegin = actionContent.find(Script_Preamble, scriptBegin);
+									DWORD scriptPreambleBegin = scriptPreambleMagicBegin + sizeof(Script_Preamble) - 1;
+									actionContent = actionContent.substr(0, scriptPreambleMagicBegin);
+
+									if (!scriptPreambleIsPresent)
+									{
+										scriptPreamble = actionContentCopy.substr(scriptBegin + scriptPreambleBegin);
+										scriptPreambleIsPresent = true;
+									}
+								}
+								ASSERT_BREAK_AFTER_LOOP_1(transformPS1Script(actionContent, actionContent), breakAfterLoop);
+								actionContent = params + actionContent;
+
+								//add apropriate extenstion
+								if (id.size() >= 5 && id.substr(id.size() - 5, 5).compare(".psm1") == 0)
+								{
+									//nothing to do
+									
+								}
+								else if (id.size() >= 4 && id.substr(id.size() - 4, 4).compare(".ps1") == 0)
+								{
+									//nothing to do
+								}
+								else
+								{
+									id += ".ps1";
+								}
+							}
+						}
+						else
+						{
+							//it can be ps1 call
+							//script
+							const char PS1_Call_Magic[] = "\1Property\2";
+							size_t propertyBegin = 0;
+							size_t pathBegin = 0;
+							size_t pathEnd = 0;
+							if (propertyBegin = actionContent.find(PS1_Call_Magic))
+							{
+								pathBegin = actionContent.find("\2", propertyBegin + 1);
+								if (pathEnd = actionContent.find("\1", pathBegin + 1))
+								{
+									std::string actionContentCopy = actionContent;
+									actionContent = actionContent.substr(pathBegin + 1, pathEnd - pathBegin - 1);
+									actionTargetType = ActionTargetType::PS1Call;
+
+									if (!scriptPreambleIsPresent)
+									{
+										if (actionContentCopy.find(Script_Preamble, pathEnd + 1))
+										{
+											DWORD scriptPreambleBegin = actionContentCopy.find(Script_Preamble, pathEnd) + sizeof(Script_Preamble) - 1;
+											scriptPreamble = actionContentCopy.substr(scriptPreambleBegin);
+											scriptPreambleIsPresent = true;
+										}
+									}
+								}
+							}
+						}
+					}
+					
+				}
 				break;
 			case ActionTargetType::JSCall:
 				if (actionSourceType == ActionSourceType::Directory)
 				{
 					actionTargetType = ActionTargetType::JSContent;
+
+					//add apropriate extenstion
+					if (id.size() < 3 || id.substr(id.size() - 3, 3).compare(".js") != 0)
+					{
+						id += ".js";
+					}
 				}
 				break;
 			case ActionTargetType::VBSCall:
 				if (actionSourceType == ActionSourceType::Directory)
 				{
 					actionTargetType = ActionTargetType::VBSContent;
+
+					//add apropriate extenstion
+					
+					if (id.size() >= 4 && id.substr(id.size() - 4, 4).compare(".vbs") == 0)
+					{
+						//nothing to do
+					}
+					else if (id.size() >= 3 && id.substr(id.size() - 3, 3).compare(".vb") == 0)
+					{
+						//nothing to do
+					}
+					else
+					{
+						id += ".vbs";
+					}
 				}
 				break;
 
@@ -426,27 +558,12 @@ bool MsiTableParser::analyzeCustomActionTable()
 				continue;
 			}
 
-			if (cAColumns[2].type.kind != ColumnKind::OrdString)
-			{
-				Log(LogLevel::Warning, "Third column in CustomAction should be a string");
-				break;
-			}
-			ASSERT_BREAK_AFTER_LOOP_1(row[2] < m_stringCount, breakAfterLoop);
-			std::string actionSource = m_vecStrings[row[2]];
-
-			if (cAColumns[3].type.kind != ColumnKind::OrdString)
-			{
-				Log(LogLevel::Warning, "Fourth column in CustomAction should be a string");
-				ASSERT_BREAK_AFTER_LOOP_1(false, breakAfterLoop);
-			}
-			ASSERT_BREAK_AFTER_LOOP_1(row[3] < m_stringCount, breakAfterLoop);
-			std::string actionContent = m_vecStrings[row[3]];
-
 			switch (actionTargetType)
 			{
 			//save script to separate file
 			case ActionTargetType::JSContent:
 			case ActionTargetType::VBSContent:
+			case ActionTargetType::PS1Content:
 			{
 				const std::string scriptFolder = "scripts";
 				if (std::experimental::filesystem::exists(scriptFolder))
@@ -461,16 +578,9 @@ bool MsiTableParser::analyzeCustomActionTable()
 						continue;
 					}
 				}
-
-				if (id.empty())
-					id = "unknown_id";
-
-				if (id.size() < 3 || id.substr(id.size() -3, 3).compare(s_mapScriptTypeToExt[actionTargetType]) != 0)
-				{
-					id += s_mapScriptTypeToExt[actionTargetType];
-				}
+				
 				std::string scriptPath = scriptFolder + "\\" + id;
-				ASSERT_BREAK_AFTER_LOOP_1(writeToFile(scriptPath, actionContent.data(), actionContent.size()), breakAfterLoop);
+				ASSERT_BREAK_AFTER_LOOP_1(writeToFile(scriptPath, actionContent.data(), actionContent.size(), std::ios::binary), breakAfterLoop);
 				break;
 			}
 			//and every action to report
@@ -484,6 +594,37 @@ bool MsiTableParser::analyzeCustomActionTable()
 			}
 		}
 		ASSERT_BREAK_AFTER_LOOP_2(breakAfterLoop);
+
+		if (scriptPreambleIsPresent)
+		{
+			const std::string scriptFolder = "scripts";
+			if (std::experimental::filesystem::exists(scriptFolder))
+			{
+				Log(LogLevel::Warning, "Scripts folder already exist.");
+			}
+			else
+			{
+				if (!std::experimental::filesystem::create_directories(scriptFolder))
+				{
+					Log(LogLevel::Warning, "Can't create scripts folder");
+					break;
+				}
+			}
+
+			std::string scriptPreamblePath = scriptFolder + "\\ScriptPreamble.ps1";
+			//if (std::experimental::filesystem::exists(scriptFolder))
+			//{
+			//	Log(LogLevel::Warning, "Scripts folder already exist.");
+
+			//	//add random suffix
+			//	std::srand(static_cast<DWORD>(std::time(nullptr)));
+			//	DWORD suffix = std::rand();
+			//	scriptPreamblePath += std::to_string(suffix);
+			//}
+
+			ASSERT_BREAK(transformPS1Script(scriptPreamble, scriptPreamble));
+			ASSERT_BREAK(writeToFile(scriptPreamblePath, scriptPreamble.data(), scriptPreamble.size(), std::ios::binary));
+		}
 
 		//if you want save stream, uncomment lines
 		/*if (customActionByteStream)
@@ -581,4 +722,34 @@ void MsiTableParser::getColumnType(WORD columnWordType, ColumnTypeInfo& columnTy
 		columnTypeInfo.kind = ColumnKind::Number;
 		columnTypeInfo.value = (columnWordType & 0x400) != 0 ? 2 : 4;
 	}
+}
+
+bool MsiTableParser::transformPS1Script(const std::string rawScript, std::string& decodedScript)
+{
+	decodedScript.clear();
+	decodedScript.reserve(rawScript.size());
+
+	for (DWORD i = 0; i < rawScript.size(); i++)
+	{
+		if (rawScript[i] == '[')
+		{
+			if (rawScript.size() < i + 3)
+			{
+				Log(LogLevel::Warning, "PS1 script is truncated");
+				return false;
+			}
+
+			if (rawScript[i + 1] == '\\' && rawScript[i + 3] == ']')
+			{
+				decodedScript += rawScript[i + 2];
+				i += 3;
+			}
+		}
+		else
+		{
+			decodedScript += rawScript[i];
+		}
+	}
+
+	return true;
 }
