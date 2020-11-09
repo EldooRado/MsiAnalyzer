@@ -63,9 +63,9 @@ public:
 	MsiTableParser(CfbExtractor& extractor);
 	~MsiTableParser();
 	bool initStringVector();
-	bool printTablesFromMetadata();
+	bool readTableNamesFromMetadata();
 	bool extractColumnsFromMetadata();
-	bool printCustomActionTable();
+	bool analyzeCustomActionTable();
 
 private:
 	bool writeToFile(std::string fileName, const char* pStream, size_t streamSize, std::ios_base::openmode mod = std::ios::out);

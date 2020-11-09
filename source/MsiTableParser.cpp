@@ -39,8 +39,16 @@ MsiTableParser::~MsiTableParser()
 }
 
 /*	How I discovered that a "!_StringPool" stream contains string lengths?
+	Thanks to dynamic analysis with IDA.
 
-	Thanks for dynamic analysis with IDA
+	STRUCTURE
+	"!_StringPool" stream is composed from DWORD's where first WORD means a length of
+	string and second its occurance number. String length more than a MAX_WORD is a special case.
+	Then occurance number is > 0 but lenght == 0, and it means that length is store on the next DWORD.
+
+	Example: "!_StringData" -> "NameTableTypeColumn". "!_StringPool" ->  hex: 
+	"00 00 00 00 04 00 0A 00 05 00 02 00 00 00 00 00 04 00 06 00 06 00 02 00"
+	Result string vector: {"", "Name", "Table", "", "Type", "Column")
 */
 bool MsiTableParser::initStringVector()
 {
@@ -54,14 +62,15 @@ bool MsiTableParser::initStringVector()
 		DWORD stringDataStreamSize = 0;
 		ASSERT_BREAK(m_cfbExtractor.readAndAllocateTable(StringData_Stream_Name, &stringDataStream, stringDataStreamSize));
 
-		if (stringDataStream)
+		//if you want save stream, uncomment lines
+		/*if (stringDataStream)
 		{
-			//if you want save stream, uncomment lines
-			writeToFile(StringData_Stream_Name, (const char*)stringDataStream, stringDataStreamSize, std::ios::binary);
-			std::string msg = std::string(StringData_Stream_Name) + " written to file";
-			Log(LogLevel::Info, msg.data());
-		}
-		Log(LogLevel::Info, "Success of reading !_StringData table");
+			if (writeToFile(StringData_Stream_Name, (const char*)stringDataStream, stringDataStreamSize, std::ios::binary))
+			{
+				std::string msg = std::string(StringData_Stream_Name) + " written to file";
+				Log(LogLevel::Info, msg.data());
+			}
+		}*/
 
 		//get StringPool
 		DWORD stringPoolByteStreamSize = 0;
@@ -79,11 +88,11 @@ bool MsiTableParser::initStringVector()
 		for (DWORD i = 0; i < m_stringCount; i++)
 		{
 			WORD occuranceNumber = stringPoolStream[2 * i + 1];
-			WORD stringLenght = stringPoolStream[2 * i];
+			WORD stringLength = stringPoolStream[2 * i];
 
 			if (occuranceNumber > 0)
 			{
-				if (stringLenght == 0)
+				if (stringLength == 0)
 				{
 					//there is long string
 					i++;
@@ -91,30 +100,26 @@ bool MsiTableParser::initStringVector()
 					m_vecStrings[stringIndex].resize(longStringLenght);
 					::memcpy((void*)m_vecStrings[stringIndex].data(), stringDataStream + offset, longStringLenght);
 					offset += longStringLenght;
-
 				}
-				else if (stringLenght > 0)
+				else if (stringLength > 0)
 				{
-					m_vecStrings[stringIndex].resize(stringLenght);
-					::memcpy((void*)m_vecStrings[stringIndex].data(), stringDataStream + offset, stringLenght);
-					offset += stringLenght;
-				}
-				else
-				{
-					//something wrong
+					m_vecStrings[stringIndex].resize(stringLength);
+					::memcpy((void*)m_vecStrings[stringIndex].data(), stringDataStream + offset, stringLength);
+					offset += stringLength;
 				}
 			}
 			stringIndex++;
 		}
 
-		if (stringPoolByteStream)
+		//if you want save stream, uncomment lines
+		/*if (stringPoolByteStream)
 		{
-			//if you want save stream, uncomment lines
-			writeToFile(StringPool_Stream_Name, (const char*)stringPoolByteStream, stringPoolByteStreamSize, std::ios::binary);
-			std::string msg = std::string(StringPool_Stream_Name) + " written to file";
-			Log(LogLevel::Info, msg.data());
-		}
-		Log(LogLevel::Info, "Success of reading !_StringPool table");
+			if (writeToFile(StringPool_Stream_Name, (const char*)stringPoolByteStream, stringPoolByteStreamSize, std::ios::binary))
+			{
+				std::string msg = std::string(StringPool_Stream_Name) + " written to file";
+				Log(LogLevel::Info, msg.data());
+			}
+		}*/
 
 		status = true;
 	} while (false);
@@ -129,14 +134,16 @@ bool MsiTableParser::initStringVector()
 	return status;
 }
 
-/*	How I discovered that a "!_Tables" stream contains string lengths?
-
+/*	How I discovered a "!_Tables" structure?
 	It was quite easy. I noticed a word count in this stream correspond to tables number
 	and that's all.
+
+	Each word means a string index in string vector. And it is table name.
 */
-bool MsiTableParser::printTablesFromMetadata()
+bool MsiTableParser::readTableNamesFromMetadata()
 {
 	bool status = false;
+	bool breakAfterLoop = false;
 	BYTE* tablesByteStream = nullptr;
 
 	do {
@@ -145,24 +152,24 @@ bool MsiTableParser::printTablesFromMetadata()
 		ASSERT_BREAK(m_cfbExtractor.readAndAllocateTable(Tables_Stream_Name, &tablesByteStream, tablesByteStreamSize));
 
 		WORD* tablesStream = (WORD*)tablesByteStream;
-		std::cout << "Tables:\n";
 		for (DWORD i = 0; i < tablesByteStreamSize / sizeof(WORD); i++)
 		{
 			WORD stringIndex = tablesStream[i];
+			ASSERT_BREAK_AFTER_LOOP_1(stringIndex < m_vecStrings.size(), breakAfterLoop);
 			m_tableNameIndices.push_back(stringIndex);
 			m_mapTNStringToTNIndex[m_vecStrings[stringIndex]] = stringIndex;
-			std::cout << m_vecStrings[stringIndex] << std::endl;
 		}
-		std::cout << std::endl;
+		ASSERT_BREAK_AFTER_LOOP_2(breakAfterLoop);
 
-		if (tablesByteStream)
+		//if you want save stream, uncomment lines
+		/*if (tablesByteStream)
 		{
-			//if you want save stream, uncomment lines
-			writeToFile(Tables_Stream_Name, (const char*)tablesByteStream, tablesByteStreamSize, std::ios::binary);
-			std::string msg = std::string(Tables_Stream_Name) + " written to file";
-			Log(LogLevel::Info, msg.data());
-		}
-		Log(LogLevel::Info, "Success of reading !_Tables table\n");
+			if (writeToFile(Tables_Stream_Name, (const char*)tablesByteStream, tablesByteStreamSize, std::ios::binary))
+			{
+				std::string msg = std::string(Tables_Stream_Name) + " written to file";
+				Log(LogLevel::Info, msg.data());
+			}
+		}*/
 
 		status = true;
 	} while (false);
@@ -170,16 +177,28 @@ bool MsiTableParser::printTablesFromMetadata()
 	return status;
 }
 
-/*	How I discovered that a "!_Columns" stream contains string lengths?
+/*	How I discovered a "!_Columns" structure?
+	Thanks to dynamic analysis with IDA, WIX and my insights.
 
-	Thanks for dynamic analysis with IDA, WIX and my insights.
+	STRUCTURE
+	"!_Columns" table contains all columns in msi database. Table size is 4 * sizeof(WORD) * columnsCount.
+	Why 4? Because each column is described by 4 values. First value is a tableName. It allows match
+	column table. Second value is column index. Third is a column name and last is column type. 
+	Order in this file is strange. There is no "first column info(tableName), second column info(index), etc" but,
+	first column info for each column, then second column info for each column, etc.
+
+	Example:
+	We have to tables in database. First table has 3 columns, second has 2. "!_Columns" table (hex):
+	07 00 07 00 07 00 22 00 22 00 -> table names
+	01 80 02 80 03 80 01 80 02 80 -> indices
+	02 00 05 00 10 00 23 00 0B 00 -> column names
+	20 AD 20 AD 04 8D FF 9D 48 AD -> column types
 */
 bool MsiTableParser::extractColumnsFromMetadata()
 {
 	bool status = false;
 
 	do {
-		//get StringData
 		DWORD columnsByteStreamSize = 0;
 		ASSERT_BREAK(m_cfbExtractor.readAndAllocateTable(Columns_Stream_Name, &m_columnsByteStream, columnsByteStreamSize));
 
@@ -191,7 +210,6 @@ bool MsiTableParser::extractColumnsFromMetadata()
 
 		DWORD currTableNameIndex = m_tableNameIndices[0];
 		m_tableNameIndexToColumnCountAndOffset[currTableNameIndex].second = m_allColumnsCount;
-		//we need to know, where is ending of table names
 		for (DWORD i = 0; i < columnsByteStreamSize / sizeof(WORD); i++)
 		{
 			WORD stringIndex = columnsStream[i];
@@ -215,6 +233,7 @@ bool MsiTableParser::extractColumnsFromMetadata()
 				if (stringIndex != currTableNameIndex)
 				{
 					//something wrong
+					Log(LogLevel::Warning, "Strange situation with indices in \"extractColumnsFromMetadata()\". Check it.");
 				}
 				m_tableNameIndexToColumnCountAndOffset[currTableNameIndex].second = m_allColumnsCount;
 
@@ -227,16 +246,18 @@ bool MsiTableParser::extractColumnsFromMetadata()
 		if (m_allColumnsCount * sizeof(WORD) * metadataColumnCount != columnsByteStreamSize)
 		{
 			//something wrong
+			Log(LogLevel::Warning, "Strange situation with columnCount in \"extractColumnsFromMetadata()\". Check it.");
 		}
 
-		if (m_columnsByteStream)
+		//if you want save stream, uncomment lines
+		/*if (m_columnsByteStream)
 		{
-			//if you want save stream, uncomment lines
-			writeToFile(Columns_Stream_Name, (const char*)m_columnsByteStream, columnsByteStreamSize, std::ios::binary);
-			std::string msg = std::string(Columns_Stream_Name) + " written to file";
-			Log(LogLevel::Info, msg.data());
-		}
-		Log(LogLevel::Info, "Success of reading !_Columns table\n");
+			if (writeToFile(Columns_Stream_Name, (const char*)m_columnsByteStream, columnsByteStreamSize, std::ios::binary))
+			{
+				std::string msg = std::string(Columns_Stream_Name) + " written to file";
+				Log(LogLevel::Info, msg.data());
+			}
+		}*/
 
 		status = true;
 	} while (false);
@@ -248,8 +269,11 @@ bool MsiTableParser::extractColumnsFromMetadata()
 
 	My knowledge in this field is based on WIX, excatly on "MsiInterop.cs" and "Decompiler.cs". 
 	There is information how to retrieve all information from customAction table.
+
+	In each table is similar situation like in "!_Columns". Firstly we have first column value for
+	each row, next second, etc. 
 */
-bool MsiTableParser::printCustomActionTable()
+bool MsiTableParser::analyzeCustomActionTable()
 {
 	bool status = false;
 	bool breakAfterLoop = false;
@@ -262,7 +286,7 @@ bool MsiTableParser::printCustomActionTable()
 		DWORD cATableNameIndex = 0;
 		ASSERT_BREAK(getTableNameIndex(CustomAction_Table_Name, cATableNameIndex));
 
-
+		ASSERT_BREAK(m_tableNameIndexToColumnCountAndOffset.count(cATableNameIndex) > 0);
 		const DWORD cAColumnCount = m_tableNameIndexToColumnCountAndOffset[cATableNameIndex].first;
 		const DWORD cAColumnOffset = m_tableNameIndexToColumnCountAndOffset[cATableNameIndex].second;
 
@@ -275,10 +299,10 @@ bool MsiTableParser::printCustomActionTable()
 		DWORD namesOffset = Name_ColumnIndex * m_allColumnsCount + cAColumnOffset;
 		DWORD typesOffset = Type_ColumnIndex * m_allColumnsCount + cAColumnOffset;
 
-		
-
 		WORD* columnsStream = (WORD*)m_columnsByteStream;
 		DWORD oneRowByteSize = 0;
+
+		//this loop help load columns info for CustomAction table
 		for (DWORD j = 0; j < cAColumnCount; j++)
 		{
 			//indices. Indices have always highest bit set to 1, I don't know why. Ignore it
@@ -292,6 +316,7 @@ bool MsiTableParser::printCustomActionTable()
 			//types
 			getColumnType(columnsStream[typesOffset + j], cAColumns[j].type);
 
+			//there is possible store DWORD. In this case we need read 4 bytes, not 2
 			if (cAColumns[j].type.kind == ColumnKind::Number && cAColumns[j].type.value == 4)
 			{
 				oneRowByteSize += 4;
@@ -301,7 +326,6 @@ bool MsiTableParser::printCustomActionTable()
 				oneRowByteSize += 2;
 			}
 		}
-
 		ASSERT_BREAK_AFTER_LOOP_2(breakAfterLoop);
 
 		DWORD customActionByteStreamSize = 0;
@@ -314,7 +338,8 @@ bool MsiTableParser::printCustomActionTable()
 				customActionByteStreamSize % oneRowByteSize);
 			break;
 		}
-
+		
+		//we can allocate memory for customTable data
 		std::vector<std::vector<DWORD>> customActionTable(rowCount);
 		for (auto& vec : customActionTable)
 		{
@@ -327,6 +352,8 @@ bool MsiTableParser::printCustomActionTable()
 		for (DWORD i = 0; i < cAColumns.size(); i++)
 		{
 			DWORD fieldSize = sizeof(WORD);
+			
+			//there is possible store DWORD. In this case we need read 4 bytes, not 2
 			if (cAColumns[i].type.kind == ColumnKind::Number && cAColumns[i].type.value == 4)
 			{
 				fieldSize = sizeof(DWORD);
@@ -339,41 +366,6 @@ bool MsiTableParser::printCustomActionTable()
 			}
 		}
 
-		//for (auto vec : customActionTable)
-		//{
-		//	for (DWORD i = 0; i < vec.size(); i++)
-		//	{
-		//		const ColumnTypeInfo& t = cAColumns[i].type;
-		//		if (t.kind == ColumnKind::LocString || t.kind == ColumnKind::OrdString)
-		//		{
-		//			if (vec[i] >= m_vecStrings.size())
-		//			{
-		//				//error
-		//			}
-		//			const std::string& s = m_vecStrings[vec[i]];
-		//			if (s.size() > t.value)
-		//			{
-		//				std::cout << s.substr(t.value) << "\t";
-		//			}
-		//			else
-		//			{
-		//				std::cout << s << "\t";
-		//			}
-		//			
-		//		}
-		//		else if (t.kind == ColumnKind::Number)
-		//		{
-		//			std::cout << vec[i] << "\t";
-		//		}
-		//		else
-		//		{
-		//			//unknown type. Print it in hex
-		//			std::cout << std::hex << vec[i] << "\t";
-		//		}
-		//	}
-		//	std::cout << std::endl;
-		//}
-
 		const std::string reportFileName = "msiAnalyzeReport.txt";
 		reportStream.open(reportFileName);
 		if (!reportStream)
@@ -382,20 +374,21 @@ bool MsiTableParser::printCustomActionTable()
 			break;
 		}
 
+		//analyze data in customAction table
 		for (auto row : customActionTable)
 		{
 			if (cAColumns[0].type.kind != ColumnKind::OrdString)
 			{
 				Log(LogLevel::Warning, "First column in CustomAction should be a string");
-				break;
+				ASSERT_BREAK_AFTER_LOOP_1(false, breakAfterLoop);
 			}
-			ASSERT_BREAK_AFTER_LOOP_1(row[0] < m_stringCount, breakAfterLoop);
+			
 			std::string id = m_vecStrings[row[0]];
 
 			if (cAColumns[1].type.kind != ColumnKind::Number)
 			{
 				Log(LogLevel::Warning, "Second column in CustomAction should be number");
-				break;
+				ASSERT_BREAK_AFTER_LOOP_1(false, breakAfterLoop);
 			}
 			DWORD type = row[1];
 
@@ -444,7 +437,7 @@ bool MsiTableParser::printCustomActionTable()
 			if (cAColumns[3].type.kind != ColumnKind::OrdString)
 			{
 				Log(LogLevel::Warning, "Fourth column in CustomAction should be a string");
-				break;
+				ASSERT_BREAK_AFTER_LOOP_1(false, breakAfterLoop);
 			}
 			ASSERT_BREAK_AFTER_LOOP_1(row[3] < m_stringCount, breakAfterLoop);
 			std::string actionContent = m_vecStrings[row[3]];
@@ -492,15 +485,16 @@ bool MsiTableParser::printCustomActionTable()
 		}
 		ASSERT_BREAK_AFTER_LOOP_2(breakAfterLoop);
 
-
-		if (customActionByteStream)
+		//if you want save stream, uncomment lines
+		/*if (customActionByteStream)
 		{
-			//if you want save stream, uncomment lines
-			writeToFile(CustomAction_Stream_Name, (const char*)customActionByteStream, customActionByteStreamSize, std::ios::binary);
-			std::string msg = std::string(CustomAction_Stream_Name) + " written to file";
-			Log(LogLevel::Info, msg.data());
-		}
-		Log(LogLevel::Info, "Success of reading !CustomAction table\n");
+			if (writeToFile(CustomAction_Stream_Name, (const char*)customActionByteStream, customActionByteStreamSize, std::ios::binary))
+			{
+				std::string msg = std::string(CustomAction_Stream_Name) + " written to file";
+				Log(LogLevel::Info, msg.data());
+			}
+		}*/
+		status = true;
 	} 
 	while (false);
 
@@ -530,7 +524,6 @@ bool MsiTableParser::writeToFile(std::string fileName, const char* pStream, size
 				continue;
 			}
 			newFileName += c;
-
 		}
 
 		outputFile.open(newFileName);

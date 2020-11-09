@@ -59,7 +59,7 @@ static_assert(sizeof(CfbHeader) == 0x200, "CfbHeader incorrect size");
 
 struct DirectoryEntry
 {
-	WORD dirEntryName[DENML];//0x00, MUST contain a Unicode string and MUST be terminated with a UTF-16 null character
+	WORD dirEntryName[DENML];	//0x00, MUST contain a Unicode string and MUST be terminated with a UTF-16 null character
 	WORD dirEntryNameLength;	//0x40, MUST be a multiple of 2 and include the terminating null character in the count
 	BYTE objectType;			//0x42, MUST be 0x00, 0x01, 0x02, or 0x05
 	BYTE colorFlag;				//0x43, MUST be 0x00 (red) or 0x01 (black)
@@ -75,40 +75,28 @@ struct DirectoryEntry
 								// For a root storage object, this field contains the size of the mini stream.
 };
 static_assert(sizeof(DirectoryEntry) == 0x80, "DirectoryEntry incorrect size");
-
-struct TableNameWchar
-{
-	BYTE type : 4;
-	BYTE higher_1 : 4, higher_2 : 2;
-	char lower : 6;
-};
-static_assert(sizeof(TableNameWchar) == 0x2, "TableNameWchar incorrect size");
 #pragma pack(pop)
-
 
 class CfbExtractor
 {
 private:
 	std::ifstream m_input;
-	CfbHeader m_cfbHeader;
+	CfbHeader m_cfbHeader = { 0 };
 	DWORD m_fileSize = 0;
 	DWORD m_sectionCount = 0;
 	DWORD m_sectionSize = 0;
 	DWORD m_miniSectionSize = 0;
 	DWORD m_fatArraySize = 0;
 	DWORD m_miniFatArraySize = 0;
-	DWORD* m_fatEntries = nullptr;
-	DirectoryEntry m_rootDirEntry;
-	std::map<std::string, DWORD> m_mapSectionNameToSectionId;
-
-public:
 	DWORD m_dirEntriesCount = 0;
-	BYTE* m_miniStream = nullptr;
+
+	DWORD* m_fatEntries = nullptr;
 	DWORD* m_miniFatEntries = nullptr;
 	DirectoryEntry* m_dirEntries = nullptr;
+	BYTE* m_miniStream = nullptr;
+	DirectoryEntry m_rootDirEntry = { 0 };
+	std::map<std::string, DWORD> m_mapStreamNameToSectionId;
 
-private:
-	std::string convertStreamNameToReadableString(const WORD* tableNameArray, const DWORD tableNameLength);
 public:
 	CfbExtractor();
 	~CfbExtractor();
@@ -118,6 +106,9 @@ public:
 	bool loadMiniFatEntries();
 	bool loadDirEntries();
 	bool loadMiniStreamEntries();
-	void initTableNames();
+	bool initRedableStreamNamesFromRawNames();
 	bool readAndAllocateTable(std::string tableName, BYTE** stream, DWORD& streamSize);
+
+private:
+	bool convertStreamNameToReadableString(const WORD* tableNameArray, const DWORD tableNameLength, std::string& readableStreamName);
 };

@@ -2,7 +2,6 @@
 
 enum class ActionSourceType
 {
-	// source of code
 	BinaryData = 0x00000000,
 	SourceFile = 0x00000010,
 	Directory = 0x00000020,

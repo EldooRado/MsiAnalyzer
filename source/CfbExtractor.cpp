@@ -32,27 +32,27 @@ bool CfbExtractor::initialize(const std::string fullPath)
 	m_input.open(fullPath, std::ios::binary);
 	if (!m_input.is_open())
 	{
-		Log(LogLevel::Error, "Failed to open file");
+		Log(LogLevel::Error, "Failed to open cfb file");
 		return false;
 	}
 
 	//getFileSize
 	m_input.seekg(0, std::ios::end);
 	DWORD zero = 0;
-	if (m_input.tellg() > (zero - 1))
+	if (m_input.tellg() > static_cast<std::streampos>(zero - 1))
 	{
-		Log(LogLevel::Error, "File to long");
+		Log(LogLevel::Error, "File to long. Max file size: 4,294,967,295");
 		return false;
 	}
 	m_fileSize = static_cast<DWORD>(m_input.tellg());
 	m_input.seekg(std::ios::beg);
 	//end of getFileSize
 
-	Log(LogLevel::Info, "File SIze: ", m_fileSize);
+	Log(LogLevel::Info, "File Size: ", m_fileSize);
 
-	if (!readType(m_input, m_cfbHeader))
+	if (!readVariable(m_input, m_cfbHeader))
 	{
-		Log(LogLevel::Error, "Problem with load cfbHeader");
+		Log(LogLevel::Error, "Problem with loading cfbHeader");
 		return false;
 	}
 	return true;
@@ -80,7 +80,7 @@ bool CfbExtractor::parseCfbHeader()
 		return false;
 	}
 
-	if (!(m_cfbHeader.majorVer == 3 && m_cfbHeader.secShift == 9) && !(m_cfbHeader.majorVer == 4 && m_cfbHeader.secShift == 0x000c))
+	if (!(m_cfbHeader.majorVer == 3 && m_cfbHeader.secShift == 9) && !(m_cfbHeader.majorVer == 4 && m_cfbHeader.secShift == 0x0C))
 	{
 		Log(LogLevel::Warning, "Invalid secShift");
 		return false;
@@ -110,12 +110,11 @@ bool CfbExtractor::parseCfbHeader()
 		Log(LogLevel::Error, "fatSecNum == 0");
 		return false;
 	}
-	else if (m_cfbHeader.fatSecNum > 1 && m_cfbHeader.fatSecNum <= 109)
+	else if (m_cfbHeader.fatSecNum > 1 && m_cfbHeader.fatSecNum <= MAX_FAT_SECTIONS_COUNT_IN_HEADER)
 	{
 		Log(LogLevel::Info, "Multiple fat sections");
-		//return false;
 	}
-	else if (m_cfbHeader.fatSecNum > 109)
+	else if (m_cfbHeader.fatSecNum > MAX_FAT_SECTIONS_COUNT_IN_HEADER)
 	{
 		if (m_cfbHeader.difatSecNum == 0)
 		{
@@ -123,7 +122,6 @@ bool CfbExtractor::parseCfbHeader()
 			return false;
 		}
 		Log(LogLevel::Info, "Difat sections are present");
-		//return false;
 	}
 
 	m_sectionSize = 1 << m_cfbHeader.secShift;
@@ -150,11 +148,14 @@ bool CfbExtractor::parseCfbHeader()
 bool CfbExtractor::loadFatEntries()
 {
 	bool status = false;
-	//difat array
+
+	bool breakAfterLoop = false;
+
 	const DWORD dwordsInSection = m_sectionSize / sizeof(DWORD);
 	DWORD * difatEntries = new DWORD[m_cfbHeader.fatSecNum];
 
 	do {
+		//read difat section
 		if (m_cfbHeader.fatSecNum <= MAX_FAT_SECTIONS_COUNT_IN_HEADER)
 		{
 			::memcpy(difatEntries, m_cfbHeader.difatArray, m_cfbHeader.fatSecNum * sizeof(DWORD));
@@ -175,25 +176,25 @@ bool CfbExtractor::loadFatEntries()
 					dwordsCountToReadInThisIter = difatsToRead;
 				}
 				DWORD difatSectionOffset = (difatSecId + 1) * m_sectionSize;
-				ASSERT_BOOL(readArray(m_input, difatEntries + MAX_FAT_SECTIONS_COUNT_IN_HEADER + i * maxDifatsInSections, dwordsCountToReadInThisIter, difatSectionOffset));
-				ASSERT_BOOL(readType(m_input, difatSecId, difatSectionOffset + m_sectionSize - sizeof(DWORD)));
+				ASSERT_BREAK_AFTER_LOOP_1(readArray(m_input, difatEntries + MAX_FAT_SECTIONS_COUNT_IN_HEADER + i * maxDifatsInSections, 
+					dwordsCountToReadInThisIter, difatSectionOffset), breakAfterLoop);
+
+				ASSERT_BREAK_AFTER_LOOP_1(readVariable(m_input, difatSecId, difatSectionOffset + m_sectionSize - sizeof(DWORD)), breakAfterLoop);
 				difatsToRead -= maxDifatsInSections;
 			}
 		}
+		ASSERT_BREAK_AFTER_LOOP_2(breakAfterLoop);
 
-		//fat section
+		//read fat section
 		const DWORD maxFatArraySize = m_cfbHeader.fatSecNum * dwordsInSection;
 
 		m_fatEntries = new DWORD[maxFatArraySize];
 		for (DWORD i = 0; i < m_cfbHeader.fatSecNum; i++)
 		{
 			DWORD fatSectionOffset = (difatEntries[i] + 1) * m_sectionSize;
-			ASSERT_BOOL(readArray(m_input, m_fatEntries + i * dwordsInSection, dwordsInSection, fatSectionOffset))
+			ASSERT_BREAK_AFTER_LOOP_1(readArray(m_input, m_fatEntries + i * dwordsInSection, dwordsInSection, fatSectionOffset), breakAfterLoop)
 		}
-
-		//end of getFatArraySize
-
-		Log(LogLevel::Info, "\nGetting fat section success");
+	
 		status = true;
 	}
 	while (false);
@@ -213,7 +214,6 @@ bool CfbExtractor::loadMiniFatEntries()
 	const DWORD miniFatDataSize = m_cfbHeader.miniFatSecNum * m_sectionSize;
 	m_miniFatEntries = new DWORD[m_miniFatArraySize];
 	ASSERT_BOOL(readChunkOfDataFromCfb(m_input, m_miniFatEntries, m_cfbHeader.firstMiniSecId, miniFatDataSize, m_sectionSize, m_fatEntries, m_sectionCount));
-	Log(LogLevel::Info, "Getting minifat section success");
 	return true;
 }
 
@@ -229,7 +229,7 @@ bool CfbExtractor::loadDirEntries()
 		{
 			if (dirSecId >= m_sectionCount)
 			{
-				Log(LogLevel::Error, "sectorIndex index out of bound: ", dirSecId);
+				Log(LogLevel::Error, "\"dirSecId\" index out of bound: ", dirSecId);
 				return false;
 			}
 
@@ -244,7 +244,6 @@ bool CfbExtractor::loadDirEntries()
 	m_dirEntries = new DirectoryEntry[m_dirEntriesCount];
 	ASSERT_BOOL(readChunkOfDataFromCfb(m_input, m_dirEntries, m_cfbHeader.firstDirSecId, dirDataSize, m_sectionSize, m_fatEntries, m_sectionCount));
 	m_rootDirEntry = m_dirEntries[0];
-	Log(LogLevel::Info, "Getting dir section success");
 	return true;
 }
 
@@ -254,28 +253,30 @@ bool CfbExtractor::loadMiniStreamEntries()
 	DWORD miniStreamSize = static_cast<DWORD>(m_rootDirEntry.streamSize);
 	m_miniStream = new BYTE[miniStreamSize];
 	ASSERT_BOOL(readChunkOfDataFromCfb(m_input, m_miniStream, m_rootDirEntry.startSecLocation, miniStreamSize, m_sectionSize, m_fatEntries, m_sectionCount));
-	Log(LogLevel::Info, "Getting ministream section success");
 	return true;
 }
 
-void CfbExtractor::initTableNames()
+bool CfbExtractor::initRedableStreamNamesFromRawNames()
 {
+	std::string name;
 	for (DWORD i = 0; i < m_dirEntriesCount; i++)
 	{
 		const DirectoryEntry& streamEntry = m_dirEntries[i];
-		m_mapSectionNameToSectionId[convertStreamNameToReadableString(streamEntry.dirEntryName, streamEntry.dirEntryNameLength)] = i;
+		ASSERT_BOOL(convertStreamNameToReadableString(streamEntry.dirEntryName, streamEntry.dirEntryNameLength, name));
+		m_mapStreamNameToSectionId[name] = i;
 	}
+	return true;
 }
 
 bool CfbExtractor::readAndAllocateTable(std::string tableName, BYTE** stream, DWORD& streamSize)
 {
-	if (m_mapSectionNameToSectionId.count(tableName) <= 0)
+	if (m_mapStreamNameToSectionId.count(tableName) <= 0)
 	{
 		Log(LogLevel::Error, "The table doesn't belong to msi ");
 		return false;
 	}
 
-	const DirectoryEntry& streamEntry = m_dirEntries[m_mapSectionNameToSectionId[tableName]];
+	const DirectoryEntry& streamEntry = m_dirEntries[m_mapStreamNameToSectionId[tableName]];
 	if (streamEntry.objectType == DirEntryType::Stream)
 	{
 		DWORD streamSecId = streamEntry.startSecLocation;
@@ -294,7 +295,7 @@ bool CfbExtractor::readAndAllocateTable(std::string tableName, BYTE** stream, DW
 	}
 	else
 	{
-		Log(LogLevel::Warning, "The directory is storage, not a stream. Dir id: ", m_mapSectionNameToSectionId[tableName]);
+		Log(LogLevel::Warning, "The directory is storage, not a stream. Dir id: ", m_mapStreamNameToSectionId[tableName]);
 	}
 	return true;
 }
@@ -321,9 +322,9 @@ const char StreamNameCharacters[] = { '0', '1', '2', '3', '4', '5', '6', '7', '8
 'B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X',
 'Y','Z','a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z','.','_' };
 
-std::string CfbExtractor::convertStreamNameToReadableString(const WORD* tableNameArray, const DWORD tableNameLength)
+bool CfbExtractor::convertStreamNameToReadableString(const WORD* tableNameArray, const DWORD tableNameLength, std::string& readableStreamName)
 {
-	std::string tableName;
+	std::string name;
 	for (DWORD i = 0; i < tableNameLength / sizeof(WORD); i++)
 	{
 		WORD wholeWord = tableNameArray[i];
@@ -338,31 +339,26 @@ std::string CfbExtractor::convertStreamNameToReadableString(const WORD* tableNam
 				break;
 			}
 
-			tableName += lowerByte;
+			name += lowerByte;
 		}
 		else if (higherByte >= 0x38 && higherByte <= 0x47)
 		{
-			if (lowerByte > 0x3F)
-			{
-				//something wrong
-			}
-
 			//get 6 bits from lower byte
 			DWORD firstCharIndex = lowerByte & 0x3F;
 			char firstChar = StreamNameCharacters[firstCharIndex];
-			tableName += firstChar;
+			name += firstChar;
 
 			//get next 6 bits
 			DWORD secondCharIndex = (wholeWord - 0x3800) >> 6;
 			char secondChar = StreamNameCharacters[secondCharIndex];
-			tableName += secondChar;
+			name += secondChar;
 		}
 		else if (higherByte == 0x48)
 		{
 			constexpr WORD Exlamation_Mark_Magic = 0x4840;
 			if (wholeWord == Exlamation_Mark_Magic) //exclamation is special
 			{
-				tableName += '!';
+				name += '!';
 			}
 			else
 			{
@@ -370,14 +366,16 @@ std::string CfbExtractor::convertStreamNameToReadableString(const WORD* tableNam
 				//get 6 bits from lower byte
 				DWORD firstCharIndex = lowerByte & 0x3F;
 				char firstChar = StreamNameCharacters[firstCharIndex];
-				tableName += firstChar;
+				name += firstChar;
 			}
 		}
-		else
+		else // 0x01 - 0x37 and  > 0x49
 		{
-			//something wrong
+			Log(LogLevel::Error, "unknown encoding of stream name");
+			return false;
 		}
 
 	}
-	return tableName;
+	readableStreamName = name;
+	return true;
 }
