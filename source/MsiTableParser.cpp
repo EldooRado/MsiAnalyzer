@@ -427,20 +427,21 @@ bool MsiTableParser::analyzeCustomActionTable()
 				else if (actionSourceType == ActionSourceType::Property)
 				{
 					//it can be powershell
-					if (id.compare("AI_DATA_SETTER") == 0)
+					const char AI_DATA_SETTER[] = "AI_DATA_SETTER";
+					if (id.compare(0, sizeof(AI_DATA_SETTER) - 1, AI_DATA_SETTER) == 0)
 					{
 						if (actionSource.compare("CustomActionData") == 0)
 						{
 							//script
 							const char PS1_Script_Magic[] = "\1Script\2";
-							DWORD scriptMagicBegin = 0;
-							if (scriptMagicBegin = actionContent.find(PS1_Script_Magic))
+							DWORD scriptMagicBegin = actionContent.find(PS1_Script_Magic);
+							if (scriptMagicBegin != std::string::npos)
 							{
 								//this is powershell script
 								const char Params_Magic[] = "\1Params\2";
-								DWORD paramsMagicBegin = 0;
 								std::string params;
-								if (paramsMagicBegin = actionContent.find(Params_Magic))
+								DWORD paramsMagicBegin = actionContent.find(Params_Magic);
+								if (paramsMagicBegin != std::string::npos)
 								{
 									DWORD paramsBegin = paramsMagicBegin + sizeof(Params_Magic) - 1;
 									ASSERT_BREAK_AFTER_LOOP_1(scriptMagicBegin > paramsBegin, breakAfterLoop);
@@ -453,9 +454,9 @@ bool MsiTableParser::analyzeCustomActionTable()
 								actionContent = actionContent.substr(scriptBegin);
 								actionTargetType = ActionTargetType::PS1Content;
 
-								if (actionContent.find(Script_Preamble, scriptBegin + 1))
+								DWORD scriptPreambleMagicBegin = actionContent.find(Script_Preamble, scriptBegin);
+								if (scriptPreambleMagicBegin != std::string::npos)
 								{
-									DWORD scriptPreambleMagicBegin = actionContent.find(Script_Preamble, scriptBegin);
 									DWORD scriptPreambleBegin = scriptPreambleMagicBegin + sizeof(Script_Preamble) - 1;
 									actionContent = actionContent.substr(0, scriptPreambleMagicBegin);
 
@@ -482,39 +483,35 @@ bool MsiTableParser::analyzeCustomActionTable()
 								{
 									id += ".ps1";
 								}
+								break;
 							}
 						}
-						else
-						{
-							//it can be ps1 call
-							//script
-							const char PS1_Call_Magic[] = "\1Property\2";
-							size_t propertyBegin = 0;
-							size_t pathBegin = 0;
-							size_t pathEnd = 0;
-							if (propertyBegin = actionContent.find(PS1_Call_Magic))
-							{
-								pathBegin = actionContent.find("\2", propertyBegin + 1);
-								if (pathEnd = actionContent.find("\1", pathBegin + 1))
-								{
-									std::string actionContentCopy = actionContent;
-									actionContent = actionContent.substr(pathBegin + 1, pathEnd - pathBegin - 1);
-									actionTargetType = ActionTargetType::PS1Call;
+						const char PS1_Call_Magic[] = "\1Property\2";
+						DWORD propertyBegin = actionContent.find(PS1_Call_Magic);
 
-									if (!scriptPreambleIsPresent)
+						if (propertyBegin != std::string::npos)
+						{
+							DWORD pathBegin = actionContent.find("\2", propertyBegin + 1);
+							DWORD pathEnd = actionContent.find("\1", pathBegin + 1);
+							if (pathBegin != std::string::npos && pathEnd != std::string::npos)
+							{
+								std::string actionContentCopy = actionContent;
+								actionContent = actionContent.substr(pathBegin + 1, pathEnd - pathBegin - 1);
+								actionTargetType = ActionTargetType::PS1Call;
+
+								if (!scriptPreambleIsPresent)
+								{
+									DWORD scriptPreambleMagicBegin = actionContentCopy.find(Script_Preamble, pathEnd);
+									if (scriptPreambleMagicBegin != std::string::npos)
 									{
-										if (actionContentCopy.find(Script_Preamble, pathEnd + 1))
-										{
-											DWORD scriptPreambleBegin = actionContentCopy.find(Script_Preamble, pathEnd) + sizeof(Script_Preamble) - 1;
-											scriptPreamble = actionContentCopy.substr(scriptPreambleBegin);
-											scriptPreambleIsPresent = true;
-										}
+										DWORD scriptPreambleBegin = scriptPreambleMagicBegin + sizeof(Script_Preamble) - 1;
+										scriptPreamble = actionContentCopy.substr(scriptPreambleBegin);
+										scriptPreambleIsPresent = true;
 									}
 								}
 							}
 						}
-					}
-					
+					}	
 				}
 				break;
 			case ActionTargetType::JSCall:

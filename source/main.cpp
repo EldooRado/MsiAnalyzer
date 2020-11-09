@@ -23,7 +23,7 @@ int main(int argc, char* argv[])
 		std::cout << "MsiAnalyzer.exe <msi_file>" << std::endl;
 		return -2;
 	}*/
-	szMsiName = "C:\\work\\msi\\tools\\powershell_inline.msi";
+	szMsiName = "C:\\work\\msi\\tools\\many_actions.msi";
 
 	/*	How to analyze compoud file binary?
 		1. check a header and get important information
