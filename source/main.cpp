@@ -36,26 +36,26 @@ int main(int argc, char* argv[])
 		
 	*/
 	CfbExtractor extractor;
-	ASSERT(extractor.initialize(szMsiName));
+	ASSERT_ERROR_LOG(extractor.initialize(szMsiName));
 	Log(LogLevel::Info, "Successful initialization of the extractor");
 
-	ASSERT(extractor.parseCfbHeader());
+	ASSERT_ERROR_LOG(extractor.parseCfbHeader());
 	Log(LogLevel::Info, "Successful parsing of the cfbHeader");
 
-	ASSERT(extractor.loadFatEntries());
+	ASSERT_ERROR_LOG(extractor.loadFatEntries());
 	Log(LogLevel::Info, "Successful loading of the fatEntries");
 
-	ASSERT(extractor.loadMiniFatEntries());
+	ASSERT_ERROR_LOG(extractor.loadMiniFatEntries());
 	Log(LogLevel::Info, "Successful loading of the miniFatEntries");
 
-	ASSERT(extractor.loadDirEntries());
+	ASSERT_ERROR_LOG(extractor.loadDirEntries());
 	Log(LogLevel::Info, "Successful loading of the dirEntries");
 
-	ASSERT(extractor.loadMiniStreamEntries());
+	ASSERT_ERROR_LOG(extractor.loadMiniStreamEntries());
 	Log(LogLevel::Info, "Successful loading of the miniStreamEntries");
 
 	//get a stream names
-	ASSERT(extractor.initRedableStreamNamesFromRawNames());
+	ASSERT_ERROR_LOG(extractor.initRedableStreamNamesFromRawNames());
 	Log(LogLevel::Info, "Successful initializing of the readableStreamNames");
 
 
@@ -74,19 +74,19 @@ int main(int argc, char* argv[])
 	*/
 	MsiTableParser parser(extractor);
 	//	!_StringPool and !_StringData
-	ASSERT(parser.initStringVector());
+	ASSERT_ERROR_LOG(parser.initStringVector());
 	Log(LogLevel::Info, "Successful initialization of the msi strings");
 
 	//	!_Tables
-	ASSERT(parser.readTableNamesFromMetadata());
+	ASSERT_ERROR_LOG(parser.readTableNamesFromMetadata());
 	Log(LogLevel::Info, "Successful printing of !_Tables");
 
 	//	!_Columns
-	ASSERT(parser.extractColumnsFromMetadata());
+	ASSERT_ERROR_LOG(parser.extractColumnsFromMetadata());
 	Log(LogLevel::Info, "Successful extraction of !_Columns");
 
 	//	!CustomAction
-	ASSERT(parser.analyzeCustomActionTable());
+	ASSERT_ERROR_LOG(parser.analyzeCustomActionTable());
 	Log(LogLevel::Info, "Successful analysis of !CustomTable");
 
 	Log(LogLevel::Info, "\n----------SUCCESS----------");
