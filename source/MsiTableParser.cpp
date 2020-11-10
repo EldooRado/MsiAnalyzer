@@ -1,5 +1,6 @@
 #include <vector>
 #include <filesystem>
+#include <regex>
 
 #include "MsiTableParser.h"
 #include "LogHelper.h"
@@ -55,7 +56,7 @@ bool MsiTableParser::initStringVector()
 	do {
 		//get StringData
 		DWORD stringDataStreamSize = 0;
-		ASSERT_BREAK(m_cfbExtractor.readAndAllocateTable(StringData_Stream_Name, &stringDataStream, stringDataStreamSize));
+		ASSERT_BREAK(m_cfbExtractor.readAndAllocateStream(StringData_Stream_Name, &stringDataStream, stringDataStreamSize));
 
 		//if you want save stream, uncomment lines
 		/*if (stringDataStream)
@@ -69,7 +70,7 @@ bool MsiTableParser::initStringVector()
 
 		//get StringPool
 		DWORD stringPoolByteStreamSize = 0;
-		ASSERT_BREAK(m_cfbExtractor.readAndAllocateTable(StringPool_Stream_Name, &stringPoolByteStream, stringPoolByteStreamSize));
+		ASSERT_BREAK(m_cfbExtractor.readAndAllocateStream(StringPool_Stream_Name, &stringPoolByteStream, stringPoolByteStreamSize));
 
 		m_stringCount = stringPoolByteStreamSize / sizeof(DWORD);
 
@@ -144,7 +145,7 @@ bool MsiTableParser::readTableNamesFromMetadata()
 	do {
 		//get StringData
 		DWORD tablesByteStreamSize = 0;
-		ASSERT_BREAK(m_cfbExtractor.readAndAllocateTable(Tables_Stream_Name, &tablesByteStream, tablesByteStreamSize));
+		ASSERT_BREAK(m_cfbExtractor.readAndAllocateStream(Tables_Stream_Name, &tablesByteStream, tablesByteStreamSize));
 
 		WORD* tablesStream = (WORD*)tablesByteStream;
 		for (DWORD i = 0; i < tablesByteStreamSize / sizeof(WORD); i++)
@@ -195,7 +196,7 @@ bool MsiTableParser::extractColumnsFromMetadata()
 
 	do {
 		DWORD columnsByteStreamSize = 0;
-		ASSERT_BREAK(m_cfbExtractor.readAndAllocateTable(Columns_Stream_Name, &m_columnsByteStream, columnsByteStreamSize));
+		ASSERT_BREAK(m_cfbExtractor.readAndAllocateStream(Columns_Stream_Name, &m_columnsByteStream, columnsByteStreamSize));
 
 		WORD* columnsStream = (WORD*)m_columnsByteStream;
 
@@ -260,6 +261,144 @@ bool MsiTableParser::extractColumnsFromMetadata()
 	return status;
 }
 
+bool MsiTableParser::loadTable(std::string tableName, std::vector<ColumnInfo>& columns, std::vector<std::vector<DWORD>>& table)
+{
+	bool status = false;
+	bool breakAfterLoop = false;
+
+	BYTE* tableByteStream = nullptr;
+
+	do
+	{
+		DWORD tableNameIndex = 0;
+		ASSERT_BREAK(getTableNameIndex(tableName, tableNameIndex));
+
+		ASSERT_BREAK(m_tableNameIndexToColumnCountAndOffset.count(tableNameIndex) > 0);
+		const DWORD columnCount = m_tableNameIndexToColumnCountAndOffset[tableNameIndex].first;
+		const DWORD columnOffset = m_tableNameIndexToColumnCountAndOffset[tableNameIndex].second;
+
+		columns.resize(columnCount);
+		const DWORD Index_ColumnIndex = 1;
+		const DWORD Name_ColumnIndex = 2;
+		const DWORD Type_ColumnIndex = 3;
+
+		DWORD indicesOffset = Index_ColumnIndex * m_allColumnsCount + columnOffset;
+		DWORD namesOffset = Name_ColumnIndex * m_allColumnsCount + columnOffset;
+		DWORD typesOffset = Type_ColumnIndex * m_allColumnsCount + columnOffset;
+
+		WORD* columnsStream = (WORD*)m_columnsByteStream;
+		DWORD oneRowByteSize = 0;
+
+		//this loop help load columns info for CustomAction table
+		for (DWORD j = 0; j < columnCount; j++)
+		{
+			//indices. Indices have always highest bit set to 1, I don't know why. Ignore it
+			columns[j].index = columnsStream[indicesOffset + j] & 0x7fff;
+
+			//names
+			WORD nameId = columnsStream[namesOffset + j];
+			ASSERT_BREAK_AFTER_LOOP_1(nameId < m_vecStrings.size(), breakAfterLoop);
+			columns[j].name = m_vecStrings[nameId];
+
+			//types
+			getColumnType(columnsStream[typesOffset + j], columns[j].type);
+
+			//there is possible store DWORD. In this case we need read 4 bytes, not 2
+			if (columns[j].type.kind == ColumnKind::Number && columns[j].type.value == 4)
+			{
+				oneRowByteSize += 4;
+			}
+			else
+			{
+				oneRowByteSize += 2;
+			}
+		}
+		ASSERT_BREAK_AFTER_LOOP_2(breakAfterLoop);
+
+		DWORD tableByteStreamSize = 0;
+		const std::string streamName = "!" + tableName;
+		ASSERT_BREAK(m_cfbExtractor.readAndAllocateStream(streamName, &tableByteStream, tableByteStreamSize));
+
+		const DWORD rowCount = tableByteStreamSize / oneRowByteSize;
+		if (tableByteStreamSize % oneRowByteSize)
+		{
+			Log(LogLevel::Warning, "Something wrong: tableByteStreamSize % oneRowByteSize = ",
+				tableByteStreamSize % oneRowByteSize);
+			break;
+		}
+
+		//we can allocate memory for customTable data
+		table.resize(rowCount);
+		for (auto& vec : table)
+		{
+			vec.resize(columns.size());
+		}
+
+		BYTE* tableStream = tableByteStream;
+
+		//load table to vector
+		for (DWORD i = 0; i < columns.size(); i++)
+		{
+			DWORD fieldSize = sizeof(WORD);
+
+			//there is possible store DWORD. In this case we need read 4 bytes, not 2
+			if (columns[i].type.kind == ColumnKind::Number && columns[i].type.value == 4)
+			{
+				fieldSize = sizeof(DWORD);
+			}
+
+			for (DWORD j = 0; j < rowCount; j++)
+			{
+				::memcpy(&table[j][i], tableStream, fieldSize);
+				tableStream += fieldSize;
+			}
+		}
+
+		status = true;
+	} while (false);
+
+	while (false);
+
+	if (tableByteStream)
+		delete[] tableByteStream;
+
+	return status;
+}
+
+bool MsiTableParser::loadProperties()
+{
+	bool status = false;
+	bool breakAfterLoop = false;
+
+	BYTE* tableByteStream = nullptr;
+	do
+	{
+		std::vector<ColumnInfo> columns;
+		std::vector<std::vector<DWORD>> table;
+		ASSERT_BREAK(loadTable(Property_Table_Name, columns, table));
+		for (auto vec : table)
+		{
+			ASSERT_BREAK_AFTER_LOOP_1(vec[0] < m_stringCount, breakAfterLoop);
+			std::string key = m_vecStrings[vec[0]];
+
+			ASSERT_BREAK_AFTER_LOOP_1(vec[1] < m_stringCount, breakAfterLoop);
+			std::string value = m_vecStrings[vec[1]];
+
+			m_mapProperties[key] = value;
+		}
+		ASSERT_BREAK_AFTER_LOOP_2(breakAfterLoop);
+
+		status = true;
+	} while (false);
+
+	while (false);
+
+	if (tableByteStream)
+		delete[] tableByteStream;
+
+	return status;
+}
+
 /* How do I know "customAction" constatns (eg. bit masks)?
 
 	My knowledge in this field is based on WIX, excatly on "MsiInterop.cs" and "Decompiler.cs". 
@@ -276,90 +415,9 @@ bool MsiTableParser::analyzeCustomActionTable()
 	BYTE* customActionByteStream = nullptr;
 	std::ofstream reportStream;
 	do {
-		//take info only about !_CustomAction table
-		//cA -> shortcut from customAction
-		DWORD cATableNameIndex = 0;
-		ASSERT_BREAK(getTableNameIndex(CustomAction_Table_Name, cATableNameIndex));
-
-		ASSERT_BREAK(m_tableNameIndexToColumnCountAndOffset.count(cATableNameIndex) > 0);
-		const DWORD cAColumnCount = m_tableNameIndexToColumnCountAndOffset[cATableNameIndex].first;
-		const DWORD cAColumnOffset = m_tableNameIndexToColumnCountAndOffset[cATableNameIndex].second;
-
-		std::vector<ColumnInfo> cAColumns(cAColumnCount);
-		const DWORD Index_ColumnIndex = 1;
-		const DWORD Name_ColumnIndex = 2;
-		const DWORD Type_ColumnIndex = 3;
-
-		DWORD indicesOffset = Index_ColumnIndex * m_allColumnsCount + cAColumnOffset;
-		DWORD namesOffset = Name_ColumnIndex * m_allColumnsCount + cAColumnOffset;
-		DWORD typesOffset = Type_ColumnIndex * m_allColumnsCount + cAColumnOffset;
-
-		WORD* columnsStream = (WORD*)m_columnsByteStream;
-		DWORD oneRowByteSize = 0;
-
-		//this loop help load columns info for CustomAction table
-		for (DWORD j = 0; j < cAColumnCount; j++)
-		{
-			//indices. Indices have always highest bit set to 1, I don't know why. Ignore it
-			cAColumns[j].index = columnsStream[indicesOffset + j] & 0x7fff;
-
-			//names
-			WORD nameId = columnsStream[namesOffset + j];
-			ASSERT_BREAK_AFTER_LOOP_1(nameId < m_vecStrings.size(), breakAfterLoop);
-			cAColumns[j].name = m_vecStrings[nameId];
-
-			//types
-			getColumnType(columnsStream[typesOffset + j], cAColumns[j].type);
-
-			//there is possible store DWORD. In this case we need read 4 bytes, not 2
-			if (cAColumns[j].type.kind == ColumnKind::Number && cAColumns[j].type.value == 4)
-			{
-				oneRowByteSize += 4;
-			}
-			else
-			{
-				oneRowByteSize += 2;
-			}
-		}
-		ASSERT_BREAK_AFTER_LOOP_2(breakAfterLoop);
-
-		DWORD customActionByteStreamSize = 0;
-		ASSERT_BREAK(m_cfbExtractor.readAndAllocateTable(CustomAction_Stream_Name, &customActionByteStream, customActionByteStreamSize));
-
-		const DWORD rowCount = customActionByteStreamSize / oneRowByteSize;
-		if (customActionByteStreamSize % oneRowByteSize)
-		{
-			Log(LogLevel::Warning, "Something wrong: customActionByteStreamSize % oneRowByteSize = ", 
-				customActionByteStreamSize % oneRowByteSize);
-			break;
-		}
-		
-		//we can allocate memory for customTable data
-		std::vector<std::vector<DWORD>> customActionTable(rowCount);
-		for (auto& vec : customActionTable)
-		{
-			vec.resize(cAColumns.size());
-		}
-
-		BYTE* customActionStream = customActionByteStream;
-		
-		//load table to vector
-		for (DWORD i = 0; i < cAColumns.size(); i++)
-		{
-			DWORD fieldSize = sizeof(WORD);
-			
-			//there is possible store DWORD. In this case we need read 4 bytes, not 2
-			if (cAColumns[i].type.kind == ColumnKind::Number && cAColumns[i].type.value == 4)
-			{
-				fieldSize = sizeof(DWORD);
-			}
-
-			for (DWORD j = 0; j < rowCount; j++)
-			{
-				::memcpy(&customActionTable[j][i], customActionStream, fieldSize);
-				customActionStream += fieldSize;
-			}
-		}
+		std::vector<ColumnInfo> cAColumns;
+		std::vector<std::vector<DWORD>> customActionTable;
+		ASSERT_BREAK(loadTable(CustomAction_Table_Name, cAColumns, customActionTable));
 
 		const std::string reportFileName = "msiAnalyzeReport.txt";
 		reportStream.open(reportFileName);
@@ -583,6 +641,21 @@ bool MsiTableParser::analyzeCustomActionTable()
 			//and every action to report
 			default:
 			{
+				//dealing with properties
+				ASSERT_BREAK_AFTER_LOOP_1(useProperties(actionContent, actionContent), breakAfterLoop);
+
+				if (actionSourceType == ActionSourceType::Property)
+				{
+					if (actionTargetType == ActionTargetType::Text)
+					{
+						m_mapProperties[actionSource] = actionContent;
+					}
+					else if (m_mapProperties.count(actionSource) > 0)
+					{
+						actionSource = m_mapProperties[actionSource];
+					}		
+				}
+
 				reportStream << "ID: " << id << " \t" << s_mapActionScourceEnumToString[actionSourceType] <<
 					" = \"" << actionSource << "\" \t" << s_mapActionTargetEnumToString[actionTargetType] <<
 					" = \"" << actionContent << "\"" << std::endl;
@@ -641,6 +714,63 @@ bool MsiTableParser::analyzeCustomActionTable()
 
 	if (reportStream.is_open())
 		reportStream.close();
+
+	return status;
+}
+
+bool MsiTableParser::printTable(std::string tableName)
+{
+	bool status = false;
+	bool breakAfterLoop = false;
+
+	BYTE* tableByteStream = nullptr;
+	do
+	{
+		std::vector<ColumnInfo> columns;
+		std::vector<std::vector<DWORD>> table;
+		ASSERT_BREAK(loadTable(tableName, columns, table));
+		for (auto vec : table)
+		{
+			for (DWORD i = 0; i < vec.size(); i++)
+			{
+				const ColumnTypeInfo& t = columns[i].type;
+				if (t.kind == ColumnKind::LocString || t.kind == ColumnKind::OrdString)
+				{
+					if (vec[i] >= m_vecStrings.size())
+					{
+						//error
+					}
+					const std::string& s = m_vecStrings[vec[i]];
+					if (s.size() > t.value)
+					{
+						std::cout << s.substr(t.value) << "\t";
+					}
+					else
+					{
+						std::cout << s << "\t";
+					}
+
+				}
+				else if (t.kind == ColumnKind::Number)
+				{
+					std::cout << vec[i] << "\t";
+				}
+				else
+				{
+					//unknown type. Print it in hex
+					std::cout << std::hex << vec[i] << "\t";
+				}
+			}
+			std::cout << std::endl;
+		}
+
+		status = true;
+	} while (false);
+
+	while (false);
+
+	if (tableByteStream)
+		delete[] tableByteStream;
 
 	return status;
 }
@@ -748,5 +878,31 @@ bool MsiTableParser::transformPS1Script(const std::string rawScript, std::string
 		}
 	}
 
+	return true;
+}
+
+bool MsiTableParser::useProperties(std::string inputString, std::string& outputString)
+{
+	std::smatch property_match;
+	std::regex property_regex("(\\[)([a-zA-Z0-9_]+)(\\])");
+	if (std::regex_search(inputString, property_match, property_regex))
+	{
+		outputString = ""; 
+		while (std::regex_search(inputString, property_match, property_regex))
+		{
+			outputString += property_match.prefix();;
+			std::string key = property_match[2].str();
+			if (m_mapProperties.count(key) > 0)
+			{
+				outputString += m_mapProperties[key];
+			}
+			else
+			{
+				outputString += property_match[0].str();;
+			}
+			inputString = property_match.suffix();
+		}
+		outputString += inputString;
+	}
 	return true;
 }

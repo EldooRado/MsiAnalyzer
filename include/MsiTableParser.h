@@ -36,8 +36,8 @@ private:
 	static constexpr char Columns_Stream_Name[] = "!_Columns";
 
 	//ordinary table names
-	static constexpr char CustomAction_Stream_Name[] = "!CustomAction";
 	static constexpr char CustomAction_Table_Name[] = "CustomAction";
+	static constexpr char Property_Table_Name[] = "Property";
 
 	//MEMBERS
 	//when I try make it const, then some methods from CfbExtractor must be const
@@ -58,6 +58,9 @@ private:
 	//key: tableNameString, value: tableNameId.		TableName -> TN
 	std::map<std::string, DWORD> m_mapTNStringToTNIndex;
 
+	//key: propertyName, value: propertyName
+	std::map<std::string, std::string> m_mapProperties;
+
 	//METHODS
 public:
 	MsiTableParser(CfbExtractor& extractor);
@@ -65,13 +68,17 @@ public:
 	bool initStringVector();
 	bool readTableNamesFromMetadata();
 	bool extractColumnsFromMetadata();
+	bool loadProperties();
 	bool analyzeCustomActionTable();
+	bool printTable(std::string tableName);
 
 private:
 	bool writeToFile(std::string fileName, const char* pStream, size_t streamSize, std::ios_base::openmode mod = std::ios::out);
 	bool getTableNameIndex(std::string tableName, DWORD& index);
 	void getColumnType(WORD columnWordType, ColumnTypeInfo& columnTypeInfo);
 	bool transformPS1Script(const std::string rawScript, std::string& decodedScript);
+	bool loadTable(std::string tableName, std::vector<ColumnInfo>& columns, std::vector<std::vector<DWORD>>& table);
+	bool useProperties(std::string inputString, std::string& outputString);
 
 	//statics
 	//key: ActionTargetType, value: actionTarget name (eg. "ExeCommand")

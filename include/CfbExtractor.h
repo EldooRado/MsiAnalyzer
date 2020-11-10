@@ -107,7 +107,7 @@ public:
 	bool loadDirEntries();
 	bool loadMiniStreamEntries();
 	bool initRedableStreamNamesFromRawNames();
-	bool readAndAllocateTable(std::string tableName, BYTE** stream, DWORD& streamSize);
+	bool readAndAllocateStream(std::string tableName, BYTE** stream, DWORD& streamSize);
 
 private:
 	bool convertStreamNameToReadableString(const WORD* tableNameArray, const DWORD tableNameLength, std::string& readableStreamName);

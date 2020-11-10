@@ -268,7 +268,7 @@ bool CfbExtractor::initRedableStreamNamesFromRawNames()
 	return true;
 }
 
-bool CfbExtractor::readAndAllocateTable(std::string tableName, BYTE** stream, DWORD& streamSize)
+bool CfbExtractor::readAndAllocateStream(std::string tableName, BYTE** stream, DWORD& streamSize)
 {
 	if (m_mapStreamNameToSectionId.count(tableName) <= 0)
 	{
