@@ -70,7 +70,8 @@ public:
 	bool extractColumnsFromMetadata();
 	bool loadProperties();
 	bool analyzeCustomActionTable();
-	bool printTable(std::string tableName);
+	bool printTable(const std::string tableName, const std::string tablePath);
+	bool printAllTables();
 
 private:
 	bool writeToFile(std::string fileName, const char* pStream, size_t streamSize, std::ios_base::openmode mod = std::ios::out);

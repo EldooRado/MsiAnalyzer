@@ -667,21 +667,17 @@ bool MsiTableParser::analyzeCustomActionTable()
 
 		if (scriptPreambleIsPresent)
 		{
-			const std::string scriptFolder = "scripts";
-			if (std::experimental::filesystem::exists(scriptFolder))
+			const std::string scriptsDirectoryName = "scripts";
+			if (!std::experimental::filesystem::exists(scriptsDirectoryName))
 			{
-				Log(LogLevel::Warning, "Scripts folder already exist.");
-			}
-			else
-			{
-				if (!std::experimental::filesystem::create_directories(scriptFolder))
+				if (!std::experimental::filesystem::create_directories(scriptsDirectoryName))
 				{
-					Log(LogLevel::Warning, "Can't create scripts folder");
-					break;
+					Log(LogLevel::Warning, "Can't create \"scripts\" folder");
+					return false;
 				}
 			}
 
-			std::string scriptPreamblePath = scriptFolder + "\\ScriptPreamble.ps1";
+			std::string scriptPreamblePath = scriptsDirectoryName + "\\ScriptPreamble.ps1";
 			//if (std::experimental::filesystem::exists(scriptFolder))
 			//{
 			//	Log(LogLevel::Warning, "Scripts folder already exist.");
@@ -718,10 +714,19 @@ bool MsiTableParser::analyzeCustomActionTable()
 	return status;
 }
 
-bool MsiTableParser::printTable(std::string tableName)
+bool MsiTableParser::printTable(const std::string tableName, const std::string tablePath)
 {
+	std::string msg = "Printing \"" + tableName + "\" table";
+	Log(LogLevel::Info, msg.data());
 	bool status = false;
 	bool breakAfterLoop = false;
+
+	std::ofstream tableOutStream(tablePath);
+	if (!tableOutStream)
+	{
+		Log(LogLevel::Error, "Cannot open report file");
+		return false;
+	}
 
 	BYTE* tableByteStream = nullptr;
 	do
@@ -729,39 +734,51 @@ bool MsiTableParser::printTable(std::string tableName)
 		std::vector<ColumnInfo> columns;
 		std::vector<std::vector<DWORD>> table;
 		ASSERT_BREAK(loadTable(tableName, columns, table));
+
+		//print column names
+		tableOutStream <<"\t|\t";
+		for (auto col : columns)
+		{
+			tableOutStream << col.name << " \t|\t" ;
+		}
+		tableOutStream << "\r\n";
+
+		int index = 1;
 		for (auto vec : table)
 		{
+			tableOutStream << index++ << ".\t";
 			for (DWORD i = 0; i < vec.size(); i++)
 			{
 				const ColumnTypeInfo& t = columns[i].type;
 				if (t.kind == ColumnKind::LocString || t.kind == ColumnKind::OrdString)
 				{
-					if (vec[i] >= m_vecStrings.size())
-					{
-						//error
-					}
+					ASSERT_BREAK_AFTER_LOOP_1(vec[i] < m_vecStrings.size(), breakAfterLoop);
 					const std::string& s = m_vecStrings[vec[i]];
 					if (s.size() > t.value)
 					{
-						std::cout << s.substr(t.value) << "\t";
+						tableOutStream << s.substr(t.value);
 					}
 					else
 					{
-						std::cout << s << "\t";
+						tableOutStream << s;
 					}
 
 				}
 				else if (t.kind == ColumnKind::Number)
 				{
-					std::cout << vec[i] << "\t";
+					tableOutStream << vec[i];
 				}
 				else
 				{
 					//unknown type. Print it in hex
-					std::cout << std::hex << vec[i] << "\t";
+					tableOutStream << std::hex << vec[i];
 				}
+
+				if(i != vec.size() - 1)
+					tableOutStream << " \t|\t ";
 			}
-			std::cout << std::endl;
+			ASSERT_BREAK_AFTER_LOOP_2(breakAfterLoop);
+			tableOutStream << std::endl;
 		}
 
 		status = true;
@@ -772,7 +789,32 @@ bool MsiTableParser::printTable(std::string tableName)
 	if (tableByteStream)
 		delete[] tableByteStream;
 
+	if (tableOutStream.is_open())
+		tableOutStream.close();
+
 	return status;
+}
+
+bool MsiTableParser::printAllTables()
+{
+	//create "tables" directory
+	const std::string tablesDirectoryName = "tables";
+	if (!std::experimental::filesystem::exists(tablesDirectoryName))
+	{
+		if (!std::experimental::filesystem::create_directories(tablesDirectoryName))
+		{
+			Log(LogLevel::Warning, "Can't create \"tables\" dir");
+			return false;
+		}
+	}
+	//end
+
+	for (auto i : m_mapTNStringToTNIndex)
+	{
+		std::string tablePath = tablesDirectoryName + "\\" + i.first;
+		printTable(i.first, tablePath);
+	}
+	return true;
 }
 
 //write to file helper

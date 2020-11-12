@@ -23,7 +23,7 @@ int main(int argc, char* argv[])
 		std::cout << "MsiAnalyzer.exe <msi_file>" << std::endl;
 		return -2;
 	}*/
-	szMsiName = "C:\\work\\msi\\tools\\run_script_with_property.msi";
+	szMsiName = "C:\\work\\msi\\tools\\IS_many_actions.msi";
 
 	/*	How to analyze compoud file binary?
 		1. check a header and get important information
@@ -93,8 +93,11 @@ int main(int argc, char* argv[])
 	ASSERT_ERROR_LOG(parser.analyzeCustomActionTable());
 	Log(LogLevel::Info, "Successful analysis of !CustomTable");
 
-	ASSERT_ERROR_LOG(parser.printTable("Property"));
-	Log(LogLevel::Info, "Successful analysis of !Property");
+	/*ASSERT_ERROR_LOG(parser.printTable("Property"));
+	Log(LogLevel::Info, "Successful analysis of !Property");*/
+
+	ASSERT_ERROR_LOG(parser.printAllTables());
+	Log(LogLevel::Info, "Successful printing all tables");
 
 	Log(LogLevel::Info, "\n----------SUCCESS----------");
 	return 0;

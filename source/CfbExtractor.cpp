@@ -272,7 +272,7 @@ bool CfbExtractor::readAndAllocateStream(std::string tableName, BYTE** stream, D
 {
 	if (m_mapStreamNameToSectionId.count(tableName) <= 0)
 	{
-		Log(LogLevel::Error, "The table doesn't belong to msi ");
+		Log(LogLevel::Error, "The table doesn't belong to msi or is empty");
 		return false;
 	}
 
