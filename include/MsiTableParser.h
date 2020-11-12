@@ -38,11 +38,18 @@ private:
 	//ordinary table names
 	static constexpr char CustomAction_Table_Name[] = "CustomAction";
 	static constexpr char Property_Table_Name[] = "Property";
+	static constexpr char AI_FileDownload_Table_Name[] = "AI_FileDownload";
+	static constexpr char MPB_RunActions_Table_Name[] = "MPB_RunActions";
 
 	//MEMBERS
 	//when I try make it const, then some methods from CfbExtractor must be const
 	// and then occurs problem with templates. Strange thing
 	CfbExtractor& m_cfbExtractor;
+	const std::string m_outputDir;
+	const std::string m_scriptsDir;
+	const std::string m_tablesDir;
+	const std::string m_filesDir;
+
 	std::vector<std::string> m_vecStrings;
 	std::vector<DWORD> m_tableNameIndices;
 	
@@ -63,15 +70,15 @@ private:
 
 	//METHODS
 public:
-	MsiTableParser(CfbExtractor& extractor);
+	MsiTableParser(CfbExtractor& extractor, const std::string outDir);
 	~MsiTableParser();
 	bool initStringVector();
 	bool readTableNamesFromMetadata();
 	bool extractColumnsFromMetadata();
 	bool loadProperties();
-	bool analyzeCustomActionTable();
-	bool printTable(const std::string tableName, const std::string tablePath);
-	bool printAllTables();
+	bool analyzeCustomActionTable(DWORD& saveScriptsCount, DWORD& savedActionsCount);
+	bool saveAllTables(bool& AI_FileDownload_IsPresent, bool& MPB_RunActions_IsPresent, DWORD& tablesNumber);
+	bool saveAllFiles(DWORD& savedFilesCount);
 
 private:
 	bool writeToFile(std::string fileName, const char* pStream, size_t streamSize, std::ios_base::openmode mod = std::ios::out);
@@ -80,6 +87,7 @@ private:
 	bool transformPS1Script(const std::string rawScript, std::string& decodedScript);
 	bool loadTable(std::string tableName, std::vector<ColumnInfo>& columns, std::vector<std::vector<DWORD>>& table);
 	bool useProperties(std::string inputString, std::string& outputString);
+	bool saveTable(const std::string tableName, const std::string tablePath);
 
 	//statics
 	//key: ActionTargetType, value: actionTarget name (eg. "ExeCommand")

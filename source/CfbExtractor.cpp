@@ -262,21 +262,32 @@ bool CfbExtractor::initRedableStreamNamesFromRawNames()
 	for (DWORD i = 0; i < m_dirEntriesCount; i++)
 	{
 		const DirectoryEntry& streamEntry = m_dirEntries[i];
+		
+		if (streamEntry.dirEntryNameLength == 0)
+		{
+			//propably free section
+			BYTE emptyEntry[sizeof(DirectoryEntry)] = { 0 };
+			if (::memcmp(&streamEntry, emptyEntry, sizeof(DirectoryEntry)) != 0)
+			{
+				Log(LogLevel::Warning, "Something wrong. dirEntryNameLength is 0 but dirEntry isn't mepty");
+				continue;
+			}
+		}
 		ASSERT_BOOL(convertStreamNameToReadableString(streamEntry.dirEntryName, streamEntry.dirEntryNameLength, name));
 		m_mapStreamNameToSectionId[name] = i;
 	}
 	return true;
 }
 
-bool CfbExtractor::readAndAllocateStream(std::string tableName, BYTE** stream, DWORD& streamSize)
+bool CfbExtractor::readAndAllocateStream(std::string streamName, BYTE** stream, DWORD& streamSize)
 {
-	if (m_mapStreamNameToSectionId.count(tableName) <= 0)
+	if (m_mapStreamNameToSectionId.count(streamName) <= 0)
 	{
-		Log(LogLevel::Error, "The table doesn't belong to msi or is empty");
+		Log(LogLevel::Warning, "The table doesn't belong to msi or is empty");
 		return false;
 	}
 
-	const DirectoryEntry& streamEntry = m_dirEntries[m_mapStreamNameToSectionId[tableName]];
+	const DirectoryEntry& streamEntry = m_dirEntries[m_mapStreamNameToSectionId[streamName]];
 	if (streamEntry.objectType == DirEntryType::Stream)
 	{
 		DWORD streamSecId = streamEntry.startSecLocation;
@@ -295,9 +306,14 @@ bool CfbExtractor::readAndAllocateStream(std::string tableName, BYTE** stream, D
 	}
 	else
 	{
-		Log(LogLevel::Warning, "The directory is storage, not a stream. Dir id: ", m_mapStreamNameToSectionId[tableName]);
+		Log(LogLevel::Warning, "The directory is storage, not a stream. Dir id: ", m_mapStreamNameToSectionId[streamName]);
 	}
 	return true;
+}
+
+const std::map<std::string, DWORD>& CfbExtractor::getMapStreamNameToSectionId() const
+{
+	return m_mapStreamNameToSectionId;
 }
 
 /*	The names of stream which contain a msi tables are very strange. These names are encoded. I spent a lot of ttime 

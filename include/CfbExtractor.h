@@ -108,6 +108,7 @@ public:
 	bool loadMiniStreamEntries();
 	bool initRedableStreamNamesFromRawNames();
 	bool readAndAllocateStream(std::string tableName, BYTE** stream, DWORD& streamSize);
+	const std::map<std::string, DWORD>& getMapStreamNameToSectionId() const;
 
 private:
 	bool convertStreamNameToReadableString(const WORD* tableNameArray, const DWORD tableNameLength, std::string& readableStreamName);

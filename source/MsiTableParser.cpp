@@ -23,7 +23,8 @@ std::map<ActionSourceType, std::string> MsiTableParser::s_mapActionScourceEnumTo
 	{ActionSourceType::Property, "Property"}
 };
 
-MsiTableParser::MsiTableParser(CfbExtractor& extractor) : m_cfbExtractor(extractor)
+MsiTableParser::MsiTableParser(CfbExtractor& extractor, const std::string outDir) : m_cfbExtractor(extractor), m_outputDir(outDir),
+	m_scriptsDir(outDir + "\\scripts"), m_tablesDir(outDir + "\\tables"), m_filesDir(outDir + "\\files")
 {
 
 }
@@ -261,110 +262,6 @@ bool MsiTableParser::extractColumnsFromMetadata()
 	return status;
 }
 
-bool MsiTableParser::loadTable(std::string tableName, std::vector<ColumnInfo>& columns, std::vector<std::vector<DWORD>>& table)
-{
-	bool status = false;
-	bool breakAfterLoop = false;
-
-	BYTE* tableByteStream = nullptr;
-
-	do
-	{
-		DWORD tableNameIndex = 0;
-		ASSERT_BREAK(getTableNameIndex(tableName, tableNameIndex));
-
-		ASSERT_BREAK(m_tableNameIndexToColumnCountAndOffset.count(tableNameIndex) > 0);
-		const DWORD columnCount = m_tableNameIndexToColumnCountAndOffset[tableNameIndex].first;
-		const DWORD columnOffset = m_tableNameIndexToColumnCountAndOffset[tableNameIndex].second;
-
-		columns.resize(columnCount);
-		const DWORD Index_ColumnIndex = 1;
-		const DWORD Name_ColumnIndex = 2;
-		const DWORD Type_ColumnIndex = 3;
-
-		DWORD indicesOffset = Index_ColumnIndex * m_allColumnsCount + columnOffset;
-		DWORD namesOffset = Name_ColumnIndex * m_allColumnsCount + columnOffset;
-		DWORD typesOffset = Type_ColumnIndex * m_allColumnsCount + columnOffset;
-
-		WORD* columnsStream = (WORD*)m_columnsByteStream;
-		DWORD oneRowByteSize = 0;
-
-		//this loop help load columns info for CustomAction table
-		for (DWORD j = 0; j < columnCount; j++)
-		{
-			//indices. Indices have always highest bit set to 1, I don't know why. Ignore it
-			columns[j].index = columnsStream[indicesOffset + j] & 0x7fff;
-
-			//names
-			WORD nameId = columnsStream[namesOffset + j];
-			ASSERT_BREAK_AFTER_LOOP_1(nameId < m_vecStrings.size(), breakAfterLoop);
-			columns[j].name = m_vecStrings[nameId];
-
-			//types
-			getColumnType(columnsStream[typesOffset + j], columns[j].type);
-
-			//there is possible store DWORD. In this case we need read 4 bytes, not 2
-			if (columns[j].type.kind == ColumnKind::Number && columns[j].type.value == 4)
-			{
-				oneRowByteSize += 4;
-			}
-			else
-			{
-				oneRowByteSize += 2;
-			}
-		}
-		ASSERT_BREAK_AFTER_LOOP_2(breakAfterLoop);
-
-		DWORD tableByteStreamSize = 0;
-		const std::string streamName = "!" + tableName;
-		ASSERT_BREAK(m_cfbExtractor.readAndAllocateStream(streamName, &tableByteStream, tableByteStreamSize));
-
-		const DWORD rowCount = tableByteStreamSize / oneRowByteSize;
-		if (tableByteStreamSize % oneRowByteSize)
-		{
-			Log(LogLevel::Warning, "Something wrong: tableByteStreamSize % oneRowByteSize = ",
-				tableByteStreamSize % oneRowByteSize);
-			break;
-		}
-
-		//we can allocate memory for customTable data
-		table.resize(rowCount);
-		for (auto& vec : table)
-		{
-			vec.resize(columns.size());
-		}
-
-		BYTE* tableStream = tableByteStream;
-
-		//load table to vector
-		for (DWORD i = 0; i < columns.size(); i++)
-		{
-			DWORD fieldSize = sizeof(WORD);
-
-			//there is possible store DWORD. In this case we need read 4 bytes, not 2
-			if (columns[i].type.kind == ColumnKind::Number && columns[i].type.value == 4)
-			{
-				fieldSize = sizeof(DWORD);
-			}
-
-			for (DWORD j = 0; j < rowCount; j++)
-			{
-				::memcpy(&table[j][i], tableStream, fieldSize);
-				tableStream += fieldSize;
-			}
-		}
-
-		status = true;
-	} while (false);
-
-	while (false);
-
-	if (tableByteStream)
-		delete[] tableByteStream;
-
-	return status;
-}
-
 bool MsiTableParser::loadProperties()
 {
 	bool status = false;
@@ -407,7 +304,7 @@ bool MsiTableParser::loadProperties()
 	In each table is similar situation like in "!_Columns". Firstly we have first column value for
 	each row, next second, etc. 
 */
-bool MsiTableParser::analyzeCustomActionTable()
+bool MsiTableParser::analyzeCustomActionTable(DWORD& saveScriptsCount, DWORD& savedActionsCount)
 {
 	bool status = false;
 	bool breakAfterLoop = false;
@@ -419,7 +316,7 @@ bool MsiTableParser::analyzeCustomActionTable()
 		std::vector<std::vector<DWORD>> customActionTable;
 		ASSERT_BREAK(loadTable(CustomAction_Table_Name, cAColumns, customActionTable));
 
-		const std::string reportFileName = "msiAnalyzeReport.txt";
+		const std::string reportFileName = m_outputDir + "\\actions.txt";
 		reportStream.open(reportFileName);
 		if (!reportStream)
 		{
@@ -431,7 +328,7 @@ bool MsiTableParser::analyzeCustomActionTable()
 		const char Script_Preamble[] = "\1ScriptPreamble\2";
 		bool scriptPreambleIsPresent = false;
 		std::string scriptPreamble;
-
+		DWORD index = 1;
 		for (auto row : customActionTable)
 		{
 			//read row
@@ -476,6 +373,7 @@ bool MsiTableParser::analyzeCustomActionTable()
 			{
 			case ActionTargetType::Dll:
 			case ActionTargetType::Exe:
+			case ActionTargetType::Install:
 				break;
 			case ActionTargetType::Text:
 				if (actionSourceType == ActionSourceType::SourceFile)
@@ -615,27 +513,23 @@ bool MsiTableParser::analyzeCustomActionTable()
 
 			switch (actionTargetType)
 			{
-			//save script to separate file
+			//save script to separate fileo
 			case ActionTargetType::JSContent:
 			case ActionTargetType::VBSContent:
 			case ActionTargetType::PS1Content:
 			{
-				const std::string scriptFolder = "scripts";
-				if (std::experimental::filesystem::exists(scriptFolder))
+				if (!std::experimental::filesystem::exists(m_scriptsDir))
 				{
-					Log(LogLevel::Warning, "Scripts folder already exist.");
-				}
-				else
-				{
-					if (!std::experimental::filesystem::create_directories(scriptFolder))
+					if (!std::experimental::filesystem::create_directories(m_scriptsDir))
 					{
 						Log(LogLevel::Warning, "Can't create scripts folder");
 						continue;
 					}
 				}
 				
-				std::string scriptPath = scriptFolder + "\\" + id;
+				std::string scriptPath = m_scriptsDir + "\\" + id;
 				ASSERT_BREAK_AFTER_LOOP_1(writeToFile(scriptPath, actionContent.data(), actionContent.size(), std::ios::binary), breakAfterLoop);
+				saveScriptsCount++;
 				break;
 			}
 			//and every action to report
@@ -656,9 +550,10 @@ bool MsiTableParser::analyzeCustomActionTable()
 					}		
 				}
 
-				reportStream << "ID: " << id << " \t" << s_mapActionScourceEnumToString[actionSourceType] <<
+				reportStream << index++ << ".\tID: " << id << " \t" << s_mapActionScourceEnumToString[actionSourceType] <<
 					" = \"" << actionSource << "\" \t" << s_mapActionTargetEnumToString[actionTargetType] <<
 					" = \"" << actionContent << "\"" << std::endl;
+				savedActionsCount++;
 				break;
 			}
 			}
@@ -667,17 +562,16 @@ bool MsiTableParser::analyzeCustomActionTable()
 
 		if (scriptPreambleIsPresent)
 		{
-			const std::string scriptsDirectoryName = "scripts";
-			if (!std::experimental::filesystem::exists(scriptsDirectoryName))
+			if (!std::experimental::filesystem::exists(m_scriptsDir))
 			{
-				if (!std::experimental::filesystem::create_directories(scriptsDirectoryName))
+				if (!std::experimental::filesystem::create_directories(m_scriptsDir))
 				{
 					Log(LogLevel::Warning, "Can't create \"scripts\" folder");
 					return false;
 				}
 			}
 
-			std::string scriptPreamblePath = scriptsDirectoryName + "\\ScriptPreamble.ps1";
+			std::string scriptPreamblePath = m_scriptsDir + "\\ScriptPreamble.ps1";
 			//if (std::experimental::filesystem::exists(scriptFolder))
 			//{
 			//	Log(LogLevel::Warning, "Scripts folder already exist.");
@@ -690,6 +584,7 @@ bool MsiTableParser::analyzeCustomActionTable()
 
 			ASSERT_BREAK(transformPS1Script(scriptPreamble, scriptPreamble));
 			ASSERT_BREAK(writeToFile(scriptPreamblePath, scriptPreamble.data(), scriptPreamble.size(), std::ios::binary));
+			saveScriptsCount++;
 		}
 
 		//if you want save stream, uncomment lines
@@ -714,94 +609,12 @@ bool MsiTableParser::analyzeCustomActionTable()
 	return status;
 }
 
-bool MsiTableParser::printTable(const std::string tableName, const std::string tablePath)
-{
-	std::string msg = "Printing \"" + tableName + "\" table";
-	Log(LogLevel::Info, msg.data());
-	bool status = false;
-	bool breakAfterLoop = false;
-
-	std::ofstream tableOutStream(tablePath);
-	if (!tableOutStream)
-	{
-		Log(LogLevel::Error, "Cannot open report file");
-		return false;
-	}
-
-	BYTE* tableByteStream = nullptr;
-	do
-	{
-		std::vector<ColumnInfo> columns;
-		std::vector<std::vector<DWORD>> table;
-		ASSERT_BREAK(loadTable(tableName, columns, table));
-
-		//print column names
-		tableOutStream <<"\t|\t";
-		for (auto col : columns)
-		{
-			tableOutStream << col.name << " \t|\t" ;
-		}
-		tableOutStream << "\r\n";
-
-		int index = 1;
-		for (auto vec : table)
-		{
-			tableOutStream << index++ << ".\t";
-			for (DWORD i = 0; i < vec.size(); i++)
-			{
-				const ColumnTypeInfo& t = columns[i].type;
-				if (t.kind == ColumnKind::LocString || t.kind == ColumnKind::OrdString)
-				{
-					ASSERT_BREAK_AFTER_LOOP_1(vec[i] < m_vecStrings.size(), breakAfterLoop);
-					const std::string& s = m_vecStrings[vec[i]];
-					if (s.size() > t.value)
-					{
-						tableOutStream << s.substr(t.value);
-					}
-					else
-					{
-						tableOutStream << s;
-					}
-
-				}
-				else if (t.kind == ColumnKind::Number)
-				{
-					tableOutStream << vec[i];
-				}
-				else
-				{
-					//unknown type. Print it in hex
-					tableOutStream << std::hex << vec[i];
-				}
-
-				if(i != vec.size() - 1)
-					tableOutStream << " \t|\t ";
-			}
-			ASSERT_BREAK_AFTER_LOOP_2(breakAfterLoop);
-			tableOutStream << std::endl;
-		}
-
-		status = true;
-	} while (false);
-
-	while (false);
-
-	if (tableByteStream)
-		delete[] tableByteStream;
-
-	if (tableOutStream.is_open())
-		tableOutStream.close();
-
-	return status;
-}
-
-bool MsiTableParser::printAllTables()
+bool MsiTableParser::saveAllTables(bool& AI_FileDownload_IsPresent, bool& MPB_RunActions_IsPresent, DWORD& tablesNumber)
 {
 	//create "tables" directory
-	const std::string tablesDirectoryName = "tables";
-	if (!std::experimental::filesystem::exists(tablesDirectoryName))
+	if (!std::experimental::filesystem::exists(m_tablesDir))
 	{
-		if (!std::experimental::filesystem::create_directories(tablesDirectoryName))
+		if (!std::experimental::filesystem::create_directories(m_tablesDir))
 		{
 			Log(LogLevel::Warning, "Can't create \"tables\" dir");
 			return false;
@@ -811,8 +624,85 @@ bool MsiTableParser::printAllTables()
 
 	for (auto i : m_mapTNStringToTNIndex)
 	{
-		std::string tablePath = tablesDirectoryName + "\\" + i.first;
-		printTable(i.first, tablePath);
+		std::string tablePath = m_tablesDir + "\\" + i.first;
+		if (saveTable(i.first, tablePath))
+		{
+			tablesNumber++;
+			if (i.first.compare(AI_FileDownload_Table_Name) == 0)
+			{
+				AI_FileDownload_IsPresent = true;
+			}
+			else if (i.first.compare(MPB_RunActions_Table_Name) == 0)
+			{
+				MPB_RunActions_IsPresent = true;
+			}
+		}
+	}
+	return true;
+}
+
+bool MsiTableParser::saveAllFiles(DWORD& savedFilesCount)
+{
+	//create "files" directory
+	if (!std::experimental::filesystem::exists(m_filesDir))
+	{
+		if (!std::experimental::filesystem::create_directories(m_filesDir))
+		{
+			Log(LogLevel::Warning, "Can't create \"files\" dir");
+			return false;
+		}
+	}
+	//end
+
+	//create "binaries" directory
+	if (!std::experimental::filesystem::exists(m_filesDir))
+	{
+		if (!std::experimental::filesystem::create_directories(m_filesDir))
+		{
+			Log(LogLevel::Warning, "Can't create \"files\" dir");
+			return false;
+		}
+	}
+	//end
+
+	const std::map<std::string, DWORD>& mapStreamNameToSectionId = m_cfbExtractor.getMapStreamNameToSectionId();
+	for (auto i : mapStreamNameToSectionId)
+	{
+		ASSERT_BOOL(i.first.size() > 1);
+
+		//each table streamName starts with '!'. In addition we don't want dump "Root Entry"
+		if (i.first[0] == '!' || i.first.compare("Root Entry") == 0) 
+		{
+			continue;
+		}
+
+		std::string fileName = i.first;
+		
+		const char Binary_Prefix[] = "Binary.";
+		const DWORD Binary_Prefix_Len = sizeof(Binary_Prefix) - 1;
+
+		if (i.first.size() >= Binary_Prefix_Len + 1 && i.first.substr(0, Binary_Prefix_Len).compare(Binary_Prefix) == 0)
+		{
+			//binary
+			fileName = fileName.substr(Binary_Prefix_Len, fileName.size() - Binary_Prefix_Len);
+		}
+
+		std::string filePath = m_filesDir + "\\" + fileName;
+		BYTE* fileStream = nullptr;
+		DWORD fileStreamSize = 0;
+		ASSERT_BREAK(m_cfbExtractor.readAndAllocateStream(i.first, &fileStream, fileStreamSize));
+		
+		if (writeToFile(filePath, (const char*)fileStream, fileStreamSize, std::ios::binary))
+		{
+			savedFilesCount++;
+		}
+		else
+		{
+			std::string msg = "Can't save " + i.first + " to file";
+			Log(LogLevel::Warning, msg.data());
+		}
+
+		delete[] fileStream;
 	}
 	return true;
 }
@@ -828,7 +718,7 @@ bool MsiTableParser::writeToFile(std::string fileName, const char* pStream, size
 		for (char c : fileName)
 		{
 			if (c <= 0x20 || (c >= 0x3A && c <= 0x3F) || c >= 0x7F || c == '"' ||
-				c == '%' || c == '*' || c == ',' || c == '.' || c == '/' || c == '\\')
+				c == '%' || c == '*' || c == ',' || c == '.' || c == '/')
 			{
 				//skip
 				continue;
@@ -947,4 +837,190 @@ bool MsiTableParser::useProperties(std::string inputString, std::string& outputS
 		outputString += inputString;
 	}
 	return true;
+}
+
+bool MsiTableParser::loadTable(std::string tableName, std::vector<ColumnInfo>& columns, std::vector<std::vector<DWORD>>& table)
+{
+	bool status = false;
+	bool breakAfterLoop = false;
+
+	BYTE* tableByteStream = nullptr;
+
+	do
+	{
+		DWORD tableNameIndex = 0;
+		ASSERT_BREAK(getTableNameIndex(tableName, tableNameIndex));
+
+		ASSERT_BREAK(m_tableNameIndexToColumnCountAndOffset.count(tableNameIndex) > 0);
+		const DWORD columnCount = m_tableNameIndexToColumnCountAndOffset[tableNameIndex].first;
+		const DWORD columnOffset = m_tableNameIndexToColumnCountAndOffset[tableNameIndex].second;
+
+		columns.resize(columnCount);
+		const DWORD Index_ColumnIndex = 1;
+		const DWORD Name_ColumnIndex = 2;
+		const DWORD Type_ColumnIndex = 3;
+
+		DWORD indicesOffset = Index_ColumnIndex * m_allColumnsCount + columnOffset;
+		DWORD namesOffset = Name_ColumnIndex * m_allColumnsCount + columnOffset;
+		DWORD typesOffset = Type_ColumnIndex * m_allColumnsCount + columnOffset;
+
+		WORD* columnsStream = (WORD*)m_columnsByteStream;
+		DWORD oneRowByteSize = 0;
+
+		//this loop help load columns info for CustomAction table
+		for (DWORD j = 0; j < columnCount; j++)
+		{
+			//indices. Indices have always highest bit set to 1, I don't know why. Ignore it
+			columns[j].index = columnsStream[indicesOffset + j] & 0x7fff;
+
+			//names
+			WORD nameId = columnsStream[namesOffset + j];
+			ASSERT_BREAK_AFTER_LOOP_1(nameId < m_vecStrings.size(), breakAfterLoop);
+			columns[j].name = m_vecStrings[nameId];
+
+			//types
+			getColumnType(columnsStream[typesOffset + j], columns[j].type);
+
+			//there is possible store DWORD. In this case we need read 4 bytes, not 2
+			if (columns[j].type.kind == ColumnKind::Number && columns[j].type.value == 4)
+			{
+				oneRowByteSize += 4;
+			}
+			else
+			{
+				oneRowByteSize += 2;
+			}
+		}
+		ASSERT_BREAK_AFTER_LOOP_2(breakAfterLoop);
+
+		DWORD tableByteStreamSize = 0;
+		const std::string streamName = "!" + tableName;
+		ASSERT_BREAK(m_cfbExtractor.readAndAllocateStream(streamName, &tableByteStream, tableByteStreamSize));
+
+		const DWORD rowCount = tableByteStreamSize / oneRowByteSize;
+		if (tableByteStreamSize % oneRowByteSize)
+		{
+			Log(LogLevel::Warning, "Something wrong: tableByteStreamSize % oneRowByteSize = ",
+				tableByteStreamSize % oneRowByteSize);
+			break;
+		}
+
+		//we can allocate memory for table
+		table.resize(rowCount);
+		for (auto& vec : table)
+		{
+			vec.resize(columns.size());
+		}
+
+		BYTE* tableStream = tableByteStream;
+
+		//load table to vector
+		for (DWORD i = 0; i < columns.size(); i++)
+		{
+			DWORD fieldSize = sizeof(WORD);
+
+			//there is possible store DWORD. In this case we need read 4 bytes, not 2
+			if (columns[i].type.kind == ColumnKind::Number && columns[i].type.value == 4)
+			{
+				fieldSize = sizeof(DWORD);
+			}
+
+			for (DWORD j = 0; j < rowCount; j++)
+			{
+				::memcpy(&table[j][i], tableStream, fieldSize);
+				tableStream += fieldSize;
+			}
+		}
+
+		status = true;
+	} while (false);
+
+	while (false);
+
+	if (tableByteStream)
+		delete[] tableByteStream;
+
+	return status;
+}
+
+bool MsiTableParser::saveTable(const std::string tableName, const std::string tablePath)
+{
+	std::string msg = "Printing \"" + tableName + "\" table";
+	Log(LogLevel::Info, msg.data());
+	bool status = false;
+	bool breakAfterLoop = false;
+
+	std::ofstream tableOutStream(tablePath);
+	if (!tableOutStream)
+	{
+		std::string msg = "Cannot open \"" + tablePath +"\" file";
+		Log(LogLevel::Error, msg.data());
+		return false;
+	}
+
+	BYTE* tableByteStream = nullptr;
+	do
+	{
+		std::vector<ColumnInfo> columns;
+		std::vector<std::vector<DWORD>> table;
+		ASSERT_BREAK(loadTable(tableName, columns, table));
+
+		//print column names
+		tableOutStream << "\t|\t";
+		for (auto col : columns)
+		{
+			tableOutStream << col.name << " \t|\t";
+		}
+		tableOutStream << "\r\n";
+
+		int index = 1;
+		for (auto vec : table)
+		{
+			tableOutStream << index++ << ".\t";
+			for (DWORD i = 0; i < vec.size(); i++)
+			{
+				const ColumnTypeInfo& t = columns[i].type;
+				if (t.kind == ColumnKind::LocString || t.kind == ColumnKind::OrdString)
+				{
+					ASSERT_BREAK_AFTER_LOOP_1(vec[i] < m_vecStrings.size(), breakAfterLoop);
+					const std::string& s = m_vecStrings[vec[i]];
+					if (s.size() > t.value)
+					{
+						tableOutStream << s.substr(t.value);
+					}
+					else
+					{
+						tableOutStream << s;
+					}
+
+				}
+				else if (t.kind == ColumnKind::Number)
+				{
+					tableOutStream << vec[i];
+				}
+				else
+				{
+					//unknown type. Print it in hex
+					tableOutStream << std::hex << vec[i];
+				}
+
+				if (i != vec.size() - 1)
+					tableOutStream << " \t|\t ";
+			}
+			ASSERT_BREAK_AFTER_LOOP_2(breakAfterLoop);
+			tableOutStream << std::endl;
+		}
+
+		status = true;
+	} while (false);
+
+	while (false);
+
+	if (tableByteStream)
+		delete[] tableByteStream;
+
+	if (tableOutStream.is_open())
+		tableOutStream.close();
+
+	return status;
 }
