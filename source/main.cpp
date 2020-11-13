@@ -13,8 +13,8 @@ int main(int argc, char* argv[])
 	//return -2; means problem with parse msi
 	//return -3; means problem with fiel or dir creation
 
-	std::string szMsiPath;
-	std::string outpuDir = "";
+	std::string msiFilePath;
+	std::string outpuDir = "output";
 	if (argc != 2 && argc != 3)
 	{
 		std::cout << "MsiAnalyzer.exe <msi_file> or" << std::endl;
@@ -25,33 +25,38 @@ int main(int argc, char* argv[])
 	//get input msi
 	if (argc >= 2)
 	{
-		szMsiPath = std::string(argv[1]);
+		msiFilePath = std::string(argv[1]);
 
-		if (!std::experimental::filesystem::exists(szMsiPath))
+		if (!std::experimental::filesystem::exists(msiFilePath))
 		{
-			std::cout << "Given file not exists" << std::endl;
+			std::cout << "Given msi file not exists" << std::endl;
 			return -3;
 		}
 	}
 
 	//get output dir
-	if (argc == 3)
+	if (argc == 2)
+	{
+		std::cout << "Default output directory: \"output\" " << std::endl;
+	}
+	else if (argc == 3)
 	{
 		outpuDir = std::string(argv[2]);
+	}
 
-		if (!std::experimental::filesystem::exists(outpuDir))
+	//create output dir
+	if (!std::experimental::filesystem::exists(outpuDir))
+	{
+		std::cout << "WARNING: Given output dir exists" << std::endl;
+		if (!std::experimental::filesystem::create_directories(outpuDir))
 		{
-			std::cout << "WARNING: Given output dir exists"<<std::endl;
-			if (!std::experimental::filesystem::create_directories(outpuDir))
-			{
-				std::cout << "Can't create \"" << outpuDir << "\" dir" << std::endl;
-				return -2;
-			}
+			std::cout << "Can't create \"" << outpuDir << "\" dir" << std::endl;
+			return -2;
 		}
 	}
 
-	LogHelper::init("logOutput.txt");
-	int status = analyzeMsi(szMsiPath, outpuDir);
+	LogHelper::init(/*"logOutput.txt"*/);
+	int status = analyzeMsi(msiFilePath, outpuDir);
 	LogHelper::deinit();
 
 	if (status == 0)
@@ -65,8 +70,7 @@ int main(int argc, char* argv[])
 	return status;
 }
 
-//make initialization for main
-int analyzeMsi(std::string szMsiPath, std::string outpuDir)
+int analyzeMsi(std::string msiPath, std::string outpuDir)
 {
 	/*	How to analyze compoud file binary?
 		1. check a header and get important information
@@ -78,7 +82,7 @@ int analyzeMsi(std::string szMsiPath, std::string outpuDir)
 		5. load ministream section (ministream store small streams, where size is less than section size)
 	*/
 	CfbExtractor extractor;
-	ASSERT(extractor.initialize(szMsiPath));
+	ASSERT(extractor.initialize(msiPath));
 	LogHelper::PrintLog(LogLevel::Info, "Successful initialization of the extractor");
 
 	ASSERT(extractor.parseCfbHeader());
@@ -136,15 +140,17 @@ int analyzeMsi(std::string szMsiPath, std::string outpuDir)
 	ASSERT(parser.analyzeCustomActionTable(savedScriptsCount, savedActionsCount));
 	LogHelper::PrintLog(LogLevel::Info, "Successful analysis of !CustomTable");
 
+	//	All Tables
 	bool AI_FileDownload_IsPresent = false;
 	bool MPB_RunActions_IsPresent = false;
 	DWORD tablesNumber = 0;
 	ASSERT(parser.saveAllTables(AI_FileDownload_IsPresent, MPB_RunActions_IsPresent, tablesNumber));
 	LogHelper::PrintLog(LogLevel::Info, "Successful saving all tables");
 
+	//	All Files
 	DWORD savedFilesCount = 0;
 	ASSERT(parser.saveAllFiles(savedFilesCount));
-	LogHelper::PrintLog(LogLevel::Info, "Successful saving all binaries");
+	LogHelper::PrintLog(LogLevel::Info, "Successful saving all embedded files");
 
 	//PRODUCE REPORT
 	std::ofstream reportStream(outpuDir + "\\analyzeReport.txt");
@@ -155,7 +161,7 @@ int analyzeMsi(std::string szMsiPath, std::string outpuDir)
 	}
 
 	reportStream << "----------REPORT----------" << std::endl;
-	reportStream << "Msi path: " << szMsiPath << std::endl;
+	reportStream << "Msi path: " << msiPath << std::endl;
 	reportStream << "Tables number:  \t" << tablesNumber << "\tSee \"<output_dir>\\tables\" directory" << std::endl;
 
 	if (savedFilesCount > 0)

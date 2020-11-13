@@ -22,7 +22,7 @@ enum class ActionTargetType
 	JSContent,
 	VBSContent,
 
-	//feature from advancedInstaller
+	//feature from custom tools
 	PS1Call,
 	PS1Content,
 };

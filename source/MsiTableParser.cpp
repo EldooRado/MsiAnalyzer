@@ -206,7 +206,7 @@ bool MsiTableParser::extractColumnsFromMetadata()
 		DWORD columnCount = 0;
 
 		DWORD currTableNameIndex = m_tableNameIndices[0];
-		m_tableNameIndexToColumnCountAndOffset[currTableNameIndex].second = m_allColumnsCount;
+		m_mapTNIndexToColumnCountAndOffset[currTableNameIndex].second = m_allColumnsCount;
 		for (DWORD i = 0; i < columnsByteStreamSize / sizeof(WORD); i++)
 		{
 			WORD stringIndex = columnsStream[i];
@@ -217,7 +217,7 @@ bool MsiTableParser::extractColumnsFromMetadata()
 			else
 			{
 				m_allColumnsCount += columnCount;
-				m_tableNameIndexToColumnCountAndOffset[currTableNameIndex].first = columnCount;
+				m_mapTNIndexToColumnCountAndOffset[currTableNameIndex].first = columnCount;
 
 				tableIndex++;
 				if (tableIndex >= m_tableNameIndices.size())
@@ -232,7 +232,7 @@ bool MsiTableParser::extractColumnsFromMetadata()
 					//something wrong
 					LogHelper::PrintLog(LogLevel::Warning, "Strange situation with indices in \"extractColumnsFromMetadata()\". Check it.");
 				}
-				m_tableNameIndexToColumnCountAndOffset[currTableNameIndex].second = m_allColumnsCount;
+				m_mapTNIndexToColumnCountAndOffset[currTableNameIndex].second = m_allColumnsCount;
 
 				columnCount = 1;
 			}
@@ -262,6 +262,12 @@ bool MsiTableParser::extractColumnsFromMetadata()
 	return status;
 }
 
+/*	The Msi format allows to store some data in properties. It can be eg. path to executable.
+	It obfuscate a analyze, because then in action we see some property instead a path to exe.
+	Therefore I decided to read properties from property table and replace them in the customActions.
+
+	IMPORTANT: I'm not sure if properties can be used in scripts, so for now I don't support it.
+*/
 bool MsiTableParser::loadProperties()
 {
 	bool status = false;
@@ -320,7 +326,7 @@ bool MsiTableParser::analyzeCustomActionTable(DWORD& saveScriptsCount, DWORD& sa
 		reportStream.open(reportFileName);
 		if (!reportStream)
 		{
-			LogHelper::PrintLog(LogLevel::Error, "Cannot open report file");
+			LogHelper::PrintLog(LogLevel::Error, "Cannot open \"actions.txt\" file");
 			break;
 		}
 
@@ -609,6 +615,7 @@ bool MsiTableParser::analyzeCustomActionTable(DWORD& saveScriptsCount, DWORD& sa
 	return status;
 }
 
+/*	Iterating by each table and saving it to file	*/
 bool MsiTableParser::saveAllTables(bool& AI_FileDownload_IsPresent, bool& MPB_RunActions_IsPresent, DWORD& tablesNumber)
 {
 	//create "tables" directory
@@ -641,6 +648,7 @@ bool MsiTableParser::saveAllTables(bool& AI_FileDownload_IsPresent, bool& MPB_Ru
 	return true;
 }
 
+/*	Iterating by each embedded file and saving it to file	*/
 bool MsiTableParser::saveAllFiles(DWORD& savedFilesCount)
 {
 	//create "files" directory
@@ -708,7 +716,7 @@ bool MsiTableParser::saveAllFiles(DWORD& savedFilesCount)
 }
 
 //write to file helper
-bool MsiTableParser::writeToFile(std::string fileName, const char* pStream, size_t streamSize, std::ios_base::openmode mod)
+bool MsiTableParser::writeToFile(const std::string fileName, const char* pStream, size_t streamSize, std::ios_base::openmode mod)
 {
 	std::ofstream outputFile(fileName, mod);
 	if (!outputFile)
@@ -741,7 +749,7 @@ bool MsiTableParser::writeToFile(std::string fileName, const char* pStream, size
 	return true;
 }
 
-bool MsiTableParser::getTableNameIndex(std::string tableName, DWORD& index)
+bool MsiTableParser::getTableNameIndex(const std::string tableName, DWORD& index)
 {
 	if (m_mapTNStringToTNIndex.count(tableName) <= 0)
 	{
@@ -759,7 +767,7 @@ bool MsiTableParser::getTableNameIndex(std::string tableName, DWORD& index)
 	and based on that I retrieved information which I need. Because I'am not interested of many types
 	(eg. object) so I treat them like a simple numbers.
 */
-void MsiTableParser::getColumnType(WORD columnWordType, ColumnTypeInfo& columnTypeInfo)
+void MsiTableParser::getColumnType(const WORD columnWordType, ColumnTypeInfo& columnTypeInfo)
 {
 	//1. if ( BITTEST(&type, 12) ) -> then field is nullable (can be null)
 	//2. there are other types: 'o', 'v', 'f', 'g', 'j' but for as are not important
@@ -779,10 +787,20 @@ void MsiTableParser::getColumnType(WORD columnWordType, ColumnTypeInfo& columnTy
 	else //there is an integer
 	{
 		columnTypeInfo.kind = ColumnKind::Number;
-		columnTypeInfo.value = (columnWordType & 0x400) != 0 ? 2 : 4;
+		columnTypeInfo.value = 4;
+
+		if (BITTEST(columnWordType, 10))
+		{
+			columnTypeInfo.value = 2;
+		}
 	}
 }
 
+/*	Ps1 scripts are store in different way than js and vbs. The script content is store as text in customAction 
+	and it coplicate many things. Some chars can't be simply saved and to mark these special chars ps1 script use
+	a scpecial construction. If '[' is present in powershell, then in custom action it is saved like "[\[]".
+	General recipe: "[\<special_char>]"
+*/
 bool MsiTableParser::transformPS1Script(const std::string rawScript, std::string& decodedScript)
 {
 	decodedScript.clear();
@@ -813,6 +831,9 @@ bool MsiTableParser::transformPS1Script(const std::string rawScript, std::string
 	return true;
 }
 
+/*	Each property is saved like "[<property_name>]". Therefore we look for this regex and replace it with
+	m_mapProperties[<property_name>].
+*/
 bool MsiTableParser::useProperties(std::string inputString, std::string& outputString)
 {
 	std::smatch property_match;
@@ -839,7 +860,8 @@ bool MsiTableParser::useProperties(std::string inputString, std::string& outputS
 	return true;
 }
 
-bool MsiTableParser::loadTable(std::string tableName, std::vector<ColumnInfo>& columns, std::vector<std::vector<DWORD>>& table)
+/* Method below get the tableName and return tableColumns and tableRows */
+bool MsiTableParser::loadTable(const std::string tableName, std::vector<ColumnInfo>& columns, std::vector<std::vector<DWORD>>& table)
 {
 	bool status = false;
 	bool breakAfterLoop = false;
@@ -851,9 +873,9 @@ bool MsiTableParser::loadTable(std::string tableName, std::vector<ColumnInfo>& c
 		DWORD tableNameIndex = 0;
 		ASSERT_BREAK(getTableNameIndex(tableName, tableNameIndex));
 
-		ASSERT_BREAK(m_tableNameIndexToColumnCountAndOffset.count(tableNameIndex) > 0);
-		const DWORD columnCount = m_tableNameIndexToColumnCountAndOffset[tableNameIndex].first;
-		const DWORD columnOffset = m_tableNameIndexToColumnCountAndOffset[tableNameIndex].second;
+		ASSERT_BREAK(m_mapTNIndexToColumnCountAndOffset.count(tableNameIndex) > 0);
+		const DWORD columnCount = m_mapTNIndexToColumnCountAndOffset[tableNameIndex].first;
+		const DWORD columnOffset = m_mapTNIndexToColumnCountAndOffset[tableNameIndex].second;
 
 		columns.resize(columnCount);
 		const DWORD Index_ColumnIndex = 1;
@@ -943,6 +965,7 @@ bool MsiTableParser::loadTable(std::string tableName, std::vector<ColumnInfo>& c
 	return status;
 }
 
+/* Method below get the tableName and saved table to "tablePath" */
 bool MsiTableParser::saveTable(const std::string tableName, const std::string tablePath)
 {
 	std::string msg = "Printing \"" + tableName + "\" table";

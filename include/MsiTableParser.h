@@ -43,7 +43,7 @@ private:
 
 	//MEMBERS
 	//when I try make it const, then some methods from CfbExtractor must be const
-	// and then occurs problem with templates. Strange thing
+	//and then occurs problem with templates. Strange thing
 	CfbExtractor& m_cfbExtractor;
 	const std::string m_outputDir;
 	const std::string m_scriptsDir;
@@ -58,9 +58,9 @@ private:
 	DWORD m_allColumnsCount = 0;
 	
 
-	//key: tableNameIndex, value: std::pair<columnCount, columnOffset> 
+	//key: tableNameIndex, value: std::pair<columnCount, columnOffset>		TableName -> TN
 	//(columnOffset is a index of the first column for table in !_Columns
-	std::map<DWORD, std::pair<DWORD, DWORD>> m_tableNameIndexToColumnCountAndOffset;
+	std::map<DWORD, std::pair<DWORD, DWORD>> m_mapTNIndexToColumnCountAndOffset;
 
 	//key: tableNameString, value: tableNameId.		TableName -> TN
 	std::map<std::string, DWORD> m_mapTNStringToTNIndex;
@@ -81,11 +81,11 @@ public:
 	bool saveAllFiles(DWORD& savedFilesCount);
 
 private:
-	bool writeToFile(std::string fileName, const char* pStream, size_t streamSize, std::ios_base::openmode mod = std::ios::out);
-	bool getTableNameIndex(std::string tableName, DWORD& index);
-	void getColumnType(WORD columnWordType, ColumnTypeInfo& columnTypeInfo);
+	bool writeToFile(const std::string fileName, const char* pStream, size_t streamSize, std::ios_base::openmode mod = std::ios::out);
+	bool getTableNameIndex(const std::string tableName, DWORD& index);
+	void getColumnType(const WORD columnWordType, ColumnTypeInfo& columnTypeInfo);
 	bool transformPS1Script(const std::string rawScript, std::string& decodedScript);
-	bool loadTable(std::string tableName, std::vector<ColumnInfo>& columns, std::vector<std::vector<DWORD>>& table);
+	bool loadTable(const std::string tableName, std::vector<ColumnInfo>& columns, std::vector<std::vector<DWORD>>& table);
 	bool useProperties(std::string inputString, std::string& outputString);
 	bool saveTable(const std::string tableName, const std::string tablePath);
 
