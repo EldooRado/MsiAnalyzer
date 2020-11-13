@@ -15,7 +15,7 @@ bool readVariable(std::ifstream& inputFile, T& data, DWORD offset = -1)
 		return false;
 	}
 
-	if (offset != -1U)
+	if ((int)offset != -1)
 	{
 		inputFile.seekg(offset, std::ios::beg);
 	}
@@ -39,7 +39,7 @@ bool readArray(std::ifstream& inputFile, T* data, DWORD size, DWORD offset = -1)
 		return false;
 	}
 
-	if (offset != -1U)
+	if ((int)offset != -1)
 	{
 		inputFile.seekg(offset, std::ios::beg);
 	}
@@ -63,7 +63,7 @@ bool readArray(BYTE* arrayStream, T* data, DWORD size, DWORD offset = -1)
 		return false;
 	}
 
-	if (offset != -1U)
+	if ((int)offset != -1)
 	{
 		arrayStream += offset;
 	}
