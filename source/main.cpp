@@ -1,3 +1,4 @@
+#include <vector>
 #include <fstream>
 #include <filesystem>
 
@@ -27,7 +28,7 @@ int main(int argc, char* argv[])
 	{
 		msiFilePath = std::string(argv[1]);
 
-		if (!std::experimental::filesystem::exists(msiFilePath))
+		if (!std::filesystem::exists(msiFilePath))
 		{
 			std::cout << "Given msi file not exists" << std::endl;
 			return -3;
@@ -45,10 +46,10 @@ int main(int argc, char* argv[])
 	}
 
 	//create output dir
-	if (!std::experimental::filesystem::exists(outpuDir))
+	if (!std::filesystem::exists(outpuDir))
 	{
 		std::cout << "WARNING: Given output dir exists" << std::endl;
-		if (!std::experimental::filesystem::create_directories(outpuDir))
+		if (!std::filesystem::create_directories(outpuDir))
 		{
 			std::cout << "Can't create \"" << outpuDir << "\" dir" << std::endl;
 			return -2;

@@ -524,9 +524,9 @@ bool MsiTableParser::analyzeCustomActionTable(DWORD& saveScriptsCount, DWORD& sa
 			case ActionTargetType::VBSContent:
 			case ActionTargetType::PS1Content:
 			{
-				if (!std::experimental::filesystem::exists(m_scriptsDir))
+				if (!std::filesystem::exists(m_scriptsDir))
 				{
-					if (!std::experimental::filesystem::create_directories(m_scriptsDir))
+					if (!std::filesystem::create_directories(m_scriptsDir))
 					{
 						LogHelper::PrintLog(LogLevel::Warning, "Can't create scripts folder");
 						continue;
@@ -568,9 +568,9 @@ bool MsiTableParser::analyzeCustomActionTable(DWORD& saveScriptsCount, DWORD& sa
 
 		if (scriptPreambleIsPresent)
 		{
-			if (!std::experimental::filesystem::exists(m_scriptsDir))
+			if (!std::filesystem::exists(m_scriptsDir))
 			{
-				if (!std::experimental::filesystem::create_directories(m_scriptsDir))
+				if (!std::filesystem::create_directories(m_scriptsDir))
 				{
 					LogHelper::PrintLog(LogLevel::Warning, "Can't create \"scripts\" folder");
 					return false;
@@ -578,7 +578,7 @@ bool MsiTableParser::analyzeCustomActionTable(DWORD& saveScriptsCount, DWORD& sa
 			}
 
 			std::string scriptPreamblePath = m_scriptsDir + "\\ScriptPreamble.ps1";
-			//if (std::experimental::filesystem::exists(scriptFolder))
+			//if (std::filesystem::exists(scriptFolder))
 			//{
 			//	Log(LogLevel::Warning, "Scripts folder already exist.");
 
@@ -619,9 +619,9 @@ bool MsiTableParser::analyzeCustomActionTable(DWORD& saveScriptsCount, DWORD& sa
 bool MsiTableParser::saveAllTables(bool& AI_FileDownload_IsPresent, bool& MPB_RunActions_IsPresent, DWORD& tablesNumber)
 {
 	//create "tables" directory
-	if (!std::experimental::filesystem::exists(m_tablesDir))
+	if (!std::filesystem::exists(m_tablesDir))
 	{
-		if (!std::experimental::filesystem::create_directories(m_tablesDir))
+		if (!std::filesystem::create_directories(m_tablesDir))
 		{
 			LogHelper::PrintLog(LogLevel::Warning, "Can't create \"tables\" dir");
 			return false;
@@ -652,9 +652,9 @@ bool MsiTableParser::saveAllTables(bool& AI_FileDownload_IsPresent, bool& MPB_Ru
 bool MsiTableParser::saveAllFiles(DWORD& savedFilesCount)
 {
 	//create "files" directory
-	if (!std::experimental::filesystem::exists(m_filesDir))
+	if (!std::filesystem::exists(m_filesDir))
 	{
-		if (!std::experimental::filesystem::create_directories(m_filesDir))
+		if (!std::filesystem::create_directories(m_filesDir))
 		{
 			LogHelper::PrintLog(LogLevel::Warning, "Can't create \"files\" dir");
 			return false;
@@ -663,9 +663,9 @@ bool MsiTableParser::saveAllFiles(DWORD& savedFilesCount)
 	//end
 
 	//create "binaries" directory
-	if (!std::experimental::filesystem::exists(m_filesDir))
+	if (!std::filesystem::exists(m_filesDir))
 	{
-		if (!std::experimental::filesystem::create_directories(m_filesDir))
+		if (!std::filesystem::create_directories(m_filesDir))
 		{
 			LogHelper::PrintLog(LogLevel::Warning, "Can't create \"files\" dir");
 			return false;
