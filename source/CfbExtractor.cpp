@@ -32,7 +32,7 @@ bool CfbExtractor::initialize(const std::string fullPath)
 	m_input.open(fullPath, std::ios::binary);
 	if (!m_input.is_open())
 	{
-		Log(LogLevel::Error, "Failed to open cfb file");
+		LogHelper::PrintLog(LogLevel::Error, "Failed to open cfb file");
 		return false;
 	}
 
@@ -41,18 +41,18 @@ bool CfbExtractor::initialize(const std::string fullPath)
 	DWORD zero = 0;
 	if (m_input.tellg() > static_cast<std::streampos>(zero - 1))
 	{
-		Log(LogLevel::Error, "File to long. Max file size: 4,294,967,295");
+		LogHelper::PrintLog(LogLevel::Error, "File to long. Max file size: 4,294,967,295");
 		return false;
 	}
 	m_fileSize = static_cast<DWORD>(m_input.tellg());
 	m_input.seekg(std::ios::beg);
 	//end of getFileSize
 
-	Log(LogLevel::Info, "File Size: ", m_fileSize);
+	LogHelper::PrintLog(LogLevel::Info, "File Size: ", m_fileSize);
 
 	if (!readVariable(m_input, m_cfbHeader))
 	{
-		Log(LogLevel::Error, "Problem with loading cfbHeader");
+		LogHelper::PrintLog(LogLevel::Error, "Problem with loading cfbHeader");
 		return false;
 	}
 	return true;
@@ -63,83 +63,83 @@ bool CfbExtractor::parseCfbHeader()
 	constexpr QWORD Cfb_Magic = 0xe11ab1a1e011cfd0;
 	if (m_cfbHeader.cfbMagic != Cfb_Magic)
 	{
-		Log(LogLevel::Warning, "Invalid magic");
+		LogHelper::PrintLog(LogLevel::Warning, "Invalid magic");
 		return false;
 	}
 
 	if (m_cfbHeader.majorVer != 3 && m_cfbHeader.majorVer != 4)
 	{
-		Log(LogLevel::Warning, "Invalid majorVer");
+		LogHelper::PrintLog(LogLevel::Warning, "Invalid majorVer");
 		return false;
 	}
 
 	constexpr WORD Little_Endian = 0xFFFE;
 	if (m_cfbHeader.byteOrder != Little_Endian)
 	{
-		Log(LogLevel::Warning, "Invalid byteOrder");
+		LogHelper::PrintLog(LogLevel::Warning, "Invalid byteOrder");
 		return false;
 	}
 
 	if (!(m_cfbHeader.majorVer == 3 && m_cfbHeader.secShift == 9) && !(m_cfbHeader.majorVer == 4 && m_cfbHeader.secShift == 0x0C))
 	{
-		Log(LogLevel::Warning, "Invalid secShift");
+		LogHelper::PrintLog(LogLevel::Warning, "Invalid secShift");
 		return false;
 	}
 
 	if (m_cfbHeader.majorVer == 3 && m_cfbHeader.dirSecNum != 0)
 	{
-		Log(LogLevel::Warning, "dirSecNum for version 3 should be 0");
+		LogHelper::PrintLog(LogLevel::Warning, "dirSecNum for version 3 should be 0");
 		return false;
 	}
 
 	if (m_cfbHeader.miniSecShift != 6)
 	{
-		Log(LogLevel::Warning, "Invalid miniSecShift");
+		LogHelper::PrintLog(LogLevel::Warning, "Invalid miniSecShift");
 		return false;
 	}
 
 	constexpr DWORD Min_Stream_Size = 0x00001000;
 	if (m_cfbHeader.minStreamSize != Min_Stream_Size)
 	{
-		Log(LogLevel::Warning, "Invalid minStreamSize");
+		LogHelper::PrintLog(LogLevel::Warning, "Invalid minStreamSize");
 		return false;
 	}
 
 	if (m_cfbHeader.fatSecNum == 0)
 	{
-		Log(LogLevel::Error, "fatSecNum == 0");
+		LogHelper::PrintLog(LogLevel::Error, "fatSecNum == 0");
 		return false;
 	}
 	else if (m_cfbHeader.fatSecNum > 1 && m_cfbHeader.fatSecNum <= MAX_FAT_SECTIONS_COUNT_IN_HEADER)
 	{
-		Log(LogLevel::Info, "Multiple fat sections");
+		LogHelper::PrintLog(LogLevel::Info, "Multiple fat sections");
 	}
 	else if (m_cfbHeader.fatSecNum > MAX_FAT_SECTIONS_COUNT_IN_HEADER)
 	{
 		if (m_cfbHeader.difatSecNum == 0)
 		{
-			Log(LogLevel::Warning, "Difat section should be present");
+			LogHelper::PrintLog(LogLevel::Warning, "Difat section should be present");
 			return false;
 		}
-		Log(LogLevel::Info, "Difat sections are present");
+		LogHelper::PrintLog(LogLevel::Info, "Difat sections are present");
 	}
 
 	m_sectionSize = 1 << m_cfbHeader.secShift;
-	Log(LogLevel::Info, "Sector size = ", m_sectionSize);
+	LogHelper::PrintLog(LogLevel::Info, "Sector size = ", m_sectionSize);
 
 	m_miniSectionSize = 1 << m_cfbHeader.miniSecShift;
-	Log(LogLevel::Info, "Sector size = ", m_miniSectionSize);
+	LogHelper::PrintLog(LogLevel::Info, "Sector size = ", m_miniSectionSize);
 
 	m_sectionCount = m_fileSize / m_sectionSize - 1;
 	if (m_fileSize % m_sectionSize)
 	{
 		m_sectionCount++;
 	}
-	Log(LogLevel::Info, "Sections number = ", m_sectionCount);
+	LogHelper::PrintLog(LogLevel::Info, "Sections number = ", m_sectionCount);
 
 	if (m_cfbHeader.difatArray[0] >= m_sectionCount - 1)
 	{
-		Log(LogLevel::Error, "Incorrect index of fat section: ", m_cfbHeader.difatArray[0]);
+		LogHelper::PrintLog(LogLevel::Error, "Incorrect index of fat section: ", m_cfbHeader.difatArray[0]);
 		return false;
 	}
 	return true;
@@ -229,7 +229,7 @@ bool CfbExtractor::loadDirEntries()
 		{
 			if (dirSecId >= m_sectionCount)
 			{
-				Log(LogLevel::Error, "\"dirSecId\" index out of bound: ", dirSecId);
+				LogHelper::PrintLog(LogLevel::Error, "\"dirSecId\" index out of bound: ", dirSecId);
 				return false;
 			}
 
@@ -269,7 +269,7 @@ bool CfbExtractor::initRedableStreamNamesFromRawNames()
 			BYTE emptyEntry[sizeof(DirectoryEntry)] = { 0 };
 			if (::memcmp(&streamEntry, emptyEntry, sizeof(DirectoryEntry)) != 0)
 			{
-				Log(LogLevel::Warning, "Something wrong. dirEntryNameLength is 0 but dirEntry isn't mepty");
+				LogHelper::PrintLog(LogLevel::Warning, "Something wrong. dirEntryNameLength is 0 but dirEntry isn't mepty");
 				continue;
 			}
 		}
@@ -283,7 +283,7 @@ bool CfbExtractor::readAndAllocateStream(std::string streamName, BYTE** stream, 
 {
 	if (m_mapStreamNameToSectionId.count(streamName) <= 0)
 	{
-		Log(LogLevel::Warning, "The table doesn't belong to msi or is empty");
+		LogHelper::PrintLog(LogLevel::Warning, "The table doesn't belong to msi or is empty");
 		return false;
 	}
 
@@ -306,7 +306,7 @@ bool CfbExtractor::readAndAllocateStream(std::string streamName, BYTE** stream, 
 	}
 	else
 	{
-		Log(LogLevel::Warning, "The directory is storage, not a stream. Dir id: ", m_mapStreamNameToSectionId[streamName]);
+		LogHelper::PrintLog(LogLevel::Warning, "The directory is storage, not a stream. Dir id: ", m_mapStreamNameToSectionId[streamName]);
 	}
 	return true;
 }
@@ -387,7 +387,7 @@ bool CfbExtractor::convertStreamNameToReadableString(const WORD* tableNameArray,
 		}
 		else // 0x01 - 0x37 and  > 0x49
 		{
-			Log(LogLevel::Error, "unknown encoding of stream name");
+			LogHelper::PrintLog(LogLevel::Error, "unknown encoding of stream name");
 			return false;
 		}
 

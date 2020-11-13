@@ -9,7 +9,7 @@ bool readVariable(std::ifstream& inputFile, T& data, DWORD offset = -1)
 {
 	if (!inputFile)
 	{
-		Log(LogLevel::Error, "Stream is closed");
+		LogHelper::PrintLog(LogLevel::Error, "Stream is closed");
 		return false;
 	}
 
@@ -21,7 +21,7 @@ bool readVariable(std::ifstream& inputFile, T& data, DWORD offset = -1)
 	inputFile.read((char*)&data, sizeof(T));
 	if (!inputFile)
 	{
-		Log(LogLevel::Error, "Readed characters: ", static_cast<int>(inputFile.gcount()));
+		LogHelper::PrintLog(LogLevel::Error, "Readed characters: ", static_cast<int>(inputFile.gcount()));
 		return false;
 	}
 	return true;
@@ -33,7 +33,7 @@ bool readArray(std::ifstream& inputFile, T* data, DWORD size, DWORD offset = -1)
 {
 	if (!inputFile)
 	{
-		Log(LogLevel::Error, "Stream is closed");
+		LogHelper::PrintLog(LogLevel::Error, "Stream is closed");
 		return false;
 	}
 
@@ -45,7 +45,7 @@ bool readArray(std::ifstream& inputFile, T* data, DWORD size, DWORD offset = -1)
 	inputFile.read((char*)data, sizeof(T)*size);
 	if (!inputFile)
 	{
-		Log(LogLevel::Error, "Readed characters: ", static_cast<int>(inputFile.gcount()));
+		LogHelper::PrintLog(LogLevel::Error, "Readed characters: ", static_cast<int>(inputFile.gcount()));
 		return false;
 	}
 	return true;
@@ -57,7 +57,7 @@ bool readArray(BYTE* arrayStream, T* data, DWORD size, DWORD offset = -1)
 {
 	if (!arrayStream)
 	{
-		Log(LogLevel::Error, "readArray - arrayStream is nullptr");
+		LogHelper::PrintLog(LogLevel::Error, "readArray - arrayStream is nullptr");
 		return false;
 	}
 
@@ -98,13 +98,13 @@ bool readChunkOfDataFromCfb(T& inputStream, U * outputStream, DWORD sectorIndex,
 
 		if (sectorIndex >= sectionArraySize)
 		{
-			Log(LogLevel::Error, "\"sectorIndex\" index out of bound: ", sectorIndex);
+			LogHelper::PrintLog(LogLevel::Error, "\"sectorIndex\" index out of bound: ", sectorIndex);
 			return false;
 		}
 
 		if (!readArray(inputStream, outputStream + i * elementsInSection, bytesToReadInThisIter / sizeof(U), sectionSize * (sectorIndex + !readFromMiniStream)))
 		{
-			Log(LogLevel::Error, "readChunkOfDataFromCfb - read error. Sec Index: ", sectorIndex);
+			LogHelper::PrintLog(LogLevel::Error, "readChunkOfDataFromCfb - read error. Sec Index: ", sectorIndex);
 			return false;
 		}
 
@@ -114,7 +114,7 @@ bool readChunkOfDataFromCfb(T& inputStream, U * outputStream, DWORD sectorIndex,
 
 	if (sectorIndex != ENDOFCHAIN)
 	{
-		Log(LogLevel::Warning, "last index should be ENDOFCHAIN but isn't. Is: ", sectorIndex);
+		LogHelper::PrintLog(LogLevel::Warning, "last index should be ENDOFCHAIN but isn't. Is: ", sectorIndex);
 	}
 
 	return true;

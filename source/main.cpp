@@ -5,16 +5,21 @@
 #include "MsiTableParser.h"
 #include "LogHelper.h"
 
+int analyzeMsi(std::string szMsiPath, std::string outpuDir);
+
 int main(int argc, char* argv[])
 {
+	//return -1; means problem with command line args 
+	//return -2; means problem with parse msi
+	//return -3; means problem with fiel or dir creation
+
 	std::string szMsiPath;
 	std::string outpuDir = "";
-
 	if (argc != 2 && argc != 3)
 	{
 		std::cout << "MsiAnalyzer.exe <msi_file> or" << std::endl;
 		std::cout << "MsiAnalyzer.exe <msi_file> <output_dir>" << std::endl;
-		return -2;
+		return -1;
 	}
 
 	//get input msi
@@ -25,31 +30,44 @@ int main(int argc, char* argv[])
 		if (!std::experimental::filesystem::exists(szMsiPath))
 		{
 			std::cout << "Given file not exists" << std::endl;
-			return -2;
+			return -3;
 		}
 	}
 
 	//get output dir
-	if(argc == 3)
+	if (argc == 3)
 	{
 		outpuDir = std::string(argv[2]);
 
-		if (std::experimental::filesystem::exists(outpuDir))
+		if (!std::experimental::filesystem::exists(outpuDir))
 		{
-			std::string msg = "\"" + outpuDir + "\" dir created";
-			Log(LogLevel::Info, msg.data());
-		}
-		else
-		{
-			Log(LogLevel::Warning, "Given output dir exists");
+			std::cout << "WARNING: Given output dir exists"<<std::endl;
 			if (!std::experimental::filesystem::create_directories(outpuDir))
 			{
-				std::cout<< "Can't create \""<< outpuDir  <<"\" dir";
-				return false;
+				std::cout << "Can't create \"" << outpuDir << "\" dir" << std::endl;
+				return -2;
 			}
 		}
 	}
 
+	LogHelper::init("logOutput.txt");
+	int status = analyzeMsi(szMsiPath, outpuDir);
+	LogHelper::deinit();
+
+	if (status == 0)
+	{
+		std::cout << "\n----------SUCCESS----------" << std::endl;
+	}
+	else
+	{
+		std::cout << "\n----------FAILURE----------" << std::endl;
+	}
+	return status;
+}
+
+//make initialization for main
+int analyzeMsi(std::string szMsiPath, std::string outpuDir)
+{
 	/*	How to analyze compoud file binary?
 		1. check a header and get important information
 		2. load fat entries (fat array contains metadata information about stream)
@@ -58,30 +76,29 @@ int main(int argc, char* argv[])
 		3. load mini fat entries (similarly like fat, but store metadata about ministream)
 		4. load dir section (it store infromation about type of data: storage, stream, ministream)
 		5. load ministream section (ministream store small streams, where size is less than section size)
-		
 	*/
 	CfbExtractor extractor;
-	ASSERT_ERROR_LOG(extractor.initialize(szMsiPath));
-	Log(LogLevel::Info, "Successful initialization of the extractor");
+	ASSERT(extractor.initialize(szMsiPath));
+	LogHelper::PrintLog(LogLevel::Info, "Successful initialization of the extractor");
 
-	ASSERT_ERROR_LOG(extractor.parseCfbHeader());
-	Log(LogLevel::Info, "Successful parsing of the cfbHeader");
+	ASSERT(extractor.parseCfbHeader());
+	LogHelper::PrintLog(LogLevel::Info, "Successful parsing of the cfbHeader");
 
-	ASSERT_ERROR_LOG(extractor.loadFatEntries());
-	Log(LogLevel::Info, "Successful loading of the fatEntries");
+	ASSERT(extractor.loadFatEntries());
+	LogHelper::PrintLog(LogLevel::Info, "Successful loading of the fatEntries");
 
-	ASSERT_ERROR_LOG(extractor.loadMiniFatEntries());
-	Log(LogLevel::Info, "Successful loading of the miniFatEntries");
+	ASSERT(extractor.loadMiniFatEntries());
+	LogHelper::PrintLog(LogLevel::Info, "Successful loading of the miniFatEntries");
 
-	ASSERT_ERROR_LOG(extractor.loadDirEntries());
-	Log(LogLevel::Info, "Successful loading of the dirEntries");
+	ASSERT(extractor.loadDirEntries());
+	LogHelper::PrintLog(LogLevel::Info, "Successful loading of the dirEntries");
 
-	ASSERT_ERROR_LOG(extractor.loadMiniStreamEntries());
-	Log(LogLevel::Info, "Successful loading of the miniStreamEntries");
+	ASSERT(extractor.loadMiniStreamEntries());
+	LogHelper::PrintLog(LogLevel::Info, "Successful loading of the miniStreamEntries");
 
 	//get a stream names
-	ASSERT_ERROR_LOG(extractor.initRedableStreamNamesFromRawNames());
-	Log(LogLevel::Info, "Successful initializing of the readableStreamNames");
+	ASSERT(extractor.initRedableStreamNamesFromRawNames());
+	LogHelper::PrintLog(LogLevel::Info, "Successful initializing of the readableStreamNames");
 
 
 	/*	How to analyze msi file?
@@ -95,55 +112,54 @@ int main(int argc, char* argv[])
 		At this moment we can get information from interesting tables. Which are interesting?
 		It depends on our purpose. If we want check, what msi file can do during installation,
 		then we should analyze !_CustomAction.
-
 	*/
 	MsiTableParser parser(extractor, outpuDir);
 	//	!_StringPool and !_StringData
-	ASSERT_ERROR_LOG(parser.initStringVector());
-	Log(LogLevel::Info, "Successful initialization of the msi strings");
+	ASSERT(parser.initStringVector());
+	LogHelper::PrintLog(LogLevel::Info, "Successful initialization of the msi strings");
 
 	//	!_Tables
-	ASSERT_ERROR_LOG(parser.readTableNamesFromMetadata());
-	Log(LogLevel::Info, "Successful printing of !_Tables");
+	ASSERT(parser.readTableNamesFromMetadata());
+	LogHelper::PrintLog(LogLevel::Info, "Successful printing of !_Tables");
 
 	//	!_Columns
-	ASSERT_ERROR_LOG(parser.extractColumnsFromMetadata());
-	Log(LogLevel::Info, "Successful extraction of !_Columns");
+	ASSERT(parser.extractColumnsFromMetadata());
+	LogHelper::PrintLog(LogLevel::Info, "Successful extraction of !_Columns");
 
 	//	!Property
-	ASSERT_ERROR_LOG(parser.loadProperties());
-	Log(LogLevel::Info, "Successful loading of !Properties");
+	ASSERT(parser.loadProperties());
+	LogHelper::PrintLog(LogLevel::Info, "Successful loading of !Properties");
 
 	//	!CustomAction
 	DWORD savedScriptsCount = 0;
 	DWORD savedActionsCount = 0;
-	ASSERT_ERROR_LOG(parser.analyzeCustomActionTable(savedScriptsCount, savedActionsCount));
-	Log(LogLevel::Info, "Successful analysis of !CustomTable");
+	ASSERT(parser.analyzeCustomActionTable(savedScriptsCount, savedActionsCount));
+	LogHelper::PrintLog(LogLevel::Info, "Successful analysis of !CustomTable");
 
 	bool AI_FileDownload_IsPresent = false;
 	bool MPB_RunActions_IsPresent = false;
 	DWORD tablesNumber = 0;
-	ASSERT_ERROR_LOG(parser.saveAllTables(AI_FileDownload_IsPresent, MPB_RunActions_IsPresent, tablesNumber));
-	Log(LogLevel::Info, "Successful saving all tables");
+	ASSERT(parser.saveAllTables(AI_FileDownload_IsPresent, MPB_RunActions_IsPresent, tablesNumber));
+	LogHelper::PrintLog(LogLevel::Info, "Successful saving all tables");
 
 	DWORD savedFilesCount = 0;
-	ASSERT_ERROR_LOG(parser.saveAllFiles(savedFilesCount));
-	Log(LogLevel::Info, "Successful saving all binaries");
+	ASSERT(parser.saveAllFiles(savedFilesCount));
+	LogHelper::PrintLog(LogLevel::Info, "Successful saving all binaries");
 
 	//PRODUCE REPORT
 	std::ofstream reportStream(outpuDir + "\\analyzeReport.txt");
 	if (!reportStream)
 	{
-		Log(LogLevel::Warning, "Can't open \"analyzeReport.txt\" file");
-		return -2;
+		LogHelper::PrintLog(LogLevel::Warning, "Can't open \"analyzeReport.txt\" file");
+		return -3;
 	}
 
 	reportStream << "----------REPORT----------" << std::endl;
 	reportStream << "Msi path: " << szMsiPath << std::endl;
 	reportStream << "Tables number:  \t" << tablesNumber << "\tSee \"<output_dir>\\tables\" directory" << std::endl;
 
-	if(savedFilesCount > 0)
-		reportStream << "Files number:   \t" << savedFilesCount <<"\tSee \"<output_dir>\\files\" directory"<< std::endl;
+	if (savedFilesCount > 0)
+		reportStream << "Files number:   \t" << savedFilesCount << "\tSee \"<output_dir>\\files\" directory" << std::endl;
 
 	if (savedScriptsCount > 0)
 		reportStream << "Scripts number: \t" << savedScriptsCount << "\tSee \"<output_dir>\\scripts\" directory" << std::endl;
@@ -162,7 +178,5 @@ int main(int argc, char* argv[])
 
 
 	reportStream.close();
-
-	std::cout << "\n----------SUCCESS----------" << std::endl;
 	return 0;
 }

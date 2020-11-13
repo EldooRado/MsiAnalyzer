@@ -12,8 +12,7 @@ typedef uint64_t QWORD;
 typedef wchar_t WCHAR;
 
 //macros
-#define ASSERT(x)			if((x) == false) return -1;
-#define ASSERT_ERROR_LOG(x)	if((x) == false) {Log(LogLevel::Error, "Something went wrong"); return -1;}
+#define ASSERT(x)			if((x) == false) return -2;
 #define ASSERT_BOOL(x)		if((x) == false) return false;
 #define ASSERT_BREAK(x)		if((x) == false) break;
 #define LOBYTE(w)			((BYTE)(((DWORD)(w)) & 0xff))

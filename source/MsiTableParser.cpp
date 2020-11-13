@@ -230,7 +230,7 @@ bool MsiTableParser::extractColumnsFromMetadata()
 				if (stringIndex != currTableNameIndex)
 				{
 					//something wrong
-					Log(LogLevel::Warning, "Strange situation with indices in \"extractColumnsFromMetadata()\". Check it.");
+					LogHelper::PrintLog(LogLevel::Warning, "Strange situation with indices in \"extractColumnsFromMetadata()\". Check it.");
 				}
 				m_tableNameIndexToColumnCountAndOffset[currTableNameIndex].second = m_allColumnsCount;
 
@@ -243,7 +243,7 @@ bool MsiTableParser::extractColumnsFromMetadata()
 		if (m_allColumnsCount * sizeof(WORD) * metadataColumnCount != columnsByteStreamSize)
 		{
 			//something wrong
-			Log(LogLevel::Warning, "Strange situation with columnCount in \"extractColumnsFromMetadata()\". Check it.");
+			LogHelper::PrintLog(LogLevel::Warning, "Strange situation with columnCount in \"extractColumnsFromMetadata()\". Check it.");
 		}
 
 		//if you want save stream, uncomment lines
@@ -320,7 +320,7 @@ bool MsiTableParser::analyzeCustomActionTable(DWORD& saveScriptsCount, DWORD& sa
 		reportStream.open(reportFileName);
 		if (!reportStream)
 		{
-			Log(LogLevel::Error, "Cannot open report file");
+			LogHelper::PrintLog(LogLevel::Error, "Cannot open report file");
 			break;
 		}
 
@@ -334,7 +334,7 @@ bool MsiTableParser::analyzeCustomActionTable(DWORD& saveScriptsCount, DWORD& sa
 			//read row
 			if (cAColumns[0].type.kind != ColumnKind::OrdString)
 			{
-				Log(LogLevel::Warning, "First column in CustomAction should be a string");
+				LogHelper::PrintLog(LogLevel::Warning, "First column in CustomAction should be a string");
 				ASSERT_BREAK_AFTER_LOOP_1(false, breakAfterLoop);
 			}
 			
@@ -344,14 +344,14 @@ bool MsiTableParser::analyzeCustomActionTable(DWORD& saveScriptsCount, DWORD& sa
 
 			if (cAColumns[1].type.kind != ColumnKind::Number)
 			{
-				Log(LogLevel::Warning, "Second column in CustomAction should be number");
+				LogHelper::PrintLog(LogLevel::Warning, "Second column in CustomAction should be number");
 				ASSERT_BREAK_AFTER_LOOP_1(false, breakAfterLoop);
 			}
 			DWORD type = row[1];
 
 			if (cAColumns[2].type.kind != ColumnKind::OrdString)
 			{
-				Log(LogLevel::Warning, "Third column in CustomAction should be a string");
+				LogHelper::PrintLog(LogLevel::Warning, "Third column in CustomAction should be a string");
 				ASSERT_BREAK_AFTER_LOOP_1(false, breakAfterLoop);
 			}
 			ASSERT_BREAK_AFTER_LOOP_1(row[2] < m_stringCount, breakAfterLoop);
@@ -359,7 +359,7 @@ bool MsiTableParser::analyzeCustomActionTable(DWORD& saveScriptsCount, DWORD& sa
 
 			if (cAColumns[3].type.kind != ColumnKind::OrdString)
 			{
-				Log(LogLevel::Warning, "Fourth column in CustomAction should be a string");
+				LogHelper::PrintLog(LogLevel::Warning, "Fourth column in CustomAction should be a string");
 				ASSERT_BREAK_AFTER_LOOP_1(false, breakAfterLoop);
 			}
 			ASSERT_BREAK_AFTER_LOOP_1(row[3] < m_stringCount, breakAfterLoop);
@@ -507,7 +507,7 @@ bool MsiTableParser::analyzeCustomActionTable(DWORD& saveScriptsCount, DWORD& sa
 			//add powershell scripts
 
 			default:
-				Log(LogLevel::Warning, "Unknown custom target type");
+				LogHelper::PrintLog(LogLevel::Warning, "Unknown custom target type");
 				continue;
 			}
 
@@ -522,7 +522,7 @@ bool MsiTableParser::analyzeCustomActionTable(DWORD& saveScriptsCount, DWORD& sa
 				{
 					if (!std::experimental::filesystem::create_directories(m_scriptsDir))
 					{
-						Log(LogLevel::Warning, "Can't create scripts folder");
+						LogHelper::PrintLog(LogLevel::Warning, "Can't create scripts folder");
 						continue;
 					}
 				}
@@ -566,7 +566,7 @@ bool MsiTableParser::analyzeCustomActionTable(DWORD& saveScriptsCount, DWORD& sa
 			{
 				if (!std::experimental::filesystem::create_directories(m_scriptsDir))
 				{
-					Log(LogLevel::Warning, "Can't create \"scripts\" folder");
+					LogHelper::PrintLog(LogLevel::Warning, "Can't create \"scripts\" folder");
 					return false;
 				}
 			}
@@ -616,7 +616,7 @@ bool MsiTableParser::saveAllTables(bool& AI_FileDownload_IsPresent, bool& MPB_Ru
 	{
 		if (!std::experimental::filesystem::create_directories(m_tablesDir))
 		{
-			Log(LogLevel::Warning, "Can't create \"tables\" dir");
+			LogHelper::PrintLog(LogLevel::Warning, "Can't create \"tables\" dir");
 			return false;
 		}
 	}
@@ -648,7 +648,7 @@ bool MsiTableParser::saveAllFiles(DWORD& savedFilesCount)
 	{
 		if (!std::experimental::filesystem::create_directories(m_filesDir))
 		{
-			Log(LogLevel::Warning, "Can't create \"files\" dir");
+			LogHelper::PrintLog(LogLevel::Warning, "Can't create \"files\" dir");
 			return false;
 		}
 	}
@@ -659,7 +659,7 @@ bool MsiTableParser::saveAllFiles(DWORD& savedFilesCount)
 	{
 		if (!std::experimental::filesystem::create_directories(m_filesDir))
 		{
-			Log(LogLevel::Warning, "Can't create \"files\" dir");
+			LogHelper::PrintLog(LogLevel::Warning, "Can't create \"files\" dir");
 			return false;
 		}
 	}
@@ -699,7 +699,7 @@ bool MsiTableParser::saveAllFiles(DWORD& savedFilesCount)
 		else
 		{
 			std::string msg = "Can't save " + i.first + " to file";
-			Log(LogLevel::Warning, msg.data());
+			LogHelper::PrintLog(LogLevel::Warning, msg.data());
 		}
 
 		delete[] fileStream;
@@ -729,8 +729,8 @@ bool MsiTableParser::writeToFile(std::string fileName, const char* pStream, size
 		outputFile.open(newFileName);
 		if (!outputFile)
 		{
-			Log(LogLevel::Warning, "Failed to create output file");
-			Log(LogLevel::Warning, "File name lenght: ", fileName.length());
+			LogHelper::PrintLog(LogLevel::Warning, "Failed to create output file");
+			LogHelper::PrintLog(LogLevel::Warning, "File name lenght: ", fileName.length());
 			return false;
 		}
 	}
@@ -746,7 +746,7 @@ bool MsiTableParser::getTableNameIndex(std::string tableName, DWORD& index)
 	if (m_mapTNStringToTNIndex.count(tableName) <= 0)
 	{
 		std::string msg = tableName + " doesn't exists";
-		Log(LogLevel::Warning, msg.data());
+		LogHelper::PrintLog(LogLevel::Warning, msg.data());
 		return false;
 	}
 
@@ -794,7 +794,7 @@ bool MsiTableParser::transformPS1Script(const std::string rawScript, std::string
 		{
 			if (rawScript.size() < i + 3)
 			{
-				Log(LogLevel::Warning, "PS1 script is truncated");
+				LogHelper::PrintLog(LogLevel::Warning, "PS1 script is truncated");
 				return false;
 			}
 
@@ -900,7 +900,7 @@ bool MsiTableParser::loadTable(std::string tableName, std::vector<ColumnInfo>& c
 		const DWORD rowCount = tableByteStreamSize / oneRowByteSize;
 		if (tableByteStreamSize % oneRowByteSize)
 		{
-			Log(LogLevel::Warning, "Something wrong: tableByteStreamSize % oneRowByteSize = ",
+			LogHelper::PrintLog(LogLevel::Warning, "Something wrong: tableByteStreamSize % oneRowByteSize = ",
 				tableByteStreamSize % oneRowByteSize);
 			break;
 		}
@@ -946,7 +946,7 @@ bool MsiTableParser::loadTable(std::string tableName, std::vector<ColumnInfo>& c
 bool MsiTableParser::saveTable(const std::string tableName, const std::string tablePath)
 {
 	std::string msg = "Printing \"" + tableName + "\" table";
-	Log(LogLevel::Info, msg.data());
+	LogHelper::PrintLog(LogLevel::Info, msg.data());
 	bool status = false;
 	bool breakAfterLoop = false;
 
@@ -954,7 +954,7 @@ bool MsiTableParser::saveTable(const std::string tableName, const std::string ta
 	if (!tableOutStream)
 	{
 		std::string msg = "Cannot open \"" + tablePath +"\" file";
-		Log(LogLevel::Error, msg.data());
+		LogHelper::PrintLog(LogLevel::Error, msg.data());
 		return false;
 	}
 
