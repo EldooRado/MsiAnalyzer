@@ -13,6 +13,7 @@ all: $(OBJECTS)
 	$(CXX) $(CCFLAGS) $(INCLUDE) $(OBJECTS) -o $(TARGET) 
 
 obj/%.o: source/%.cpp
+	@mkdir -p $(@D)
 	$(CXX) $(CXXFLAGS) $(INCLUDE) -c $^ -o $@
 
 clean:
