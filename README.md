@@ -27,7 +27,7 @@ The purpose of the project is allow to extraction of information about actions i
 https://drive.google.com/drive/folders/1B--x_qQctYGTiS4wX0X0kJFCF62LvIWs?usp=sharing
 
 ### To do:
-1. Max size of msi to anazlyze is MAX_DWORD_VALUE, because I used DWORD's to store file offsets. It can be good thing change it to QWORD's
+1. Max size of msi to anazlyze is MAX_DWORD_VALUE, because I used DWORD's to store file offsets. It can be good idea to change it to QWORD's
 2. Add releases tab in github
 3. There is possibility to overrite files. If someone add "ScriptPreamble.ps1" script to msi, then there is possiblity that overwriting.
 4. Anlyze more tools to msi producing.
