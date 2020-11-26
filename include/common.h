@@ -21,4 +21,4 @@ typedef wchar_t WCHAR;
 
 //special break. Allow to break from nested loop
 #define ASSERT_BREAK_AFTER_LOOP_1(x, y)		if((x) == false) {y = true; break;}
-#define ASSERT_BREAK_AFTER_LOOP_2(y)		if (y) break;
+#define ASSERT_BREAK_AFTER_LOOP_2(y)		if (y) break; 
